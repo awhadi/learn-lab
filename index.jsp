@@ -47,13 +47,6 @@
                 <div class="logo" id="logoMenuBtn">
                     <a href="<%= baseUrl %>/"><img src="awhadi-online.webp" alt="awhadi.online"></a>
                     <span class="logo-version-badge" id="logoVersionBadge"><%= appVersion %></span>
-                    <div class="logo-dropdown" id="logoDropdown">
-                        <a href="<%= baseUrl %>/manager/html" target="_blank"><i class="fas fa-tools"></i> Tomcat Manager</a>
-                        <a href="<%= baseUrl %>/host-manager" target="_blank"><i class="fas fa-server"></i> Host Manager</a>
-                        <div class="dropdown-divider"></div>
-                        <a href="#" class="restart-link" data-restart="tomcat"><i class="fas fa-sync-alt"></i> Restart Tomcat</a>
-                        <a href="#" class="restart-link" data-restart="docker"><i class="fab fa-docker"></i> Restart Docker</a>
-                    </div>
                 </div>
                 <button class="mobile-menu-btn" style="display:none;"><i class="fas fa-bars"></i></button>
             </div>
@@ -65,17 +58,6 @@
             </div>
         </div>
     </header>
-
-    <div id="restartConfirmModal" class="restart-modal">
-        <div class="restart-modal-content">
-            <div class="restart-modal-header"><i class="fas fa-exclamation-triangle"></i> Confirm Restart</div>
-            <div class="restart-modal-body"><p>Are you sure you want to restart <strong id="restartServiceName"></strong>?</p></div>
-            <div class="restart-modal-footer">
-                <button class="btn-cancel" id="cancelRestartBtn">Cancel</button>
-                <button class="btn-confirm" id="confirmRestartBtn">Confirm Restart</button>
-            </div>
-        </div>
-    </div>
 
     <div id="loadingModal" class="loading-modal" style="display:none;">
         <div class="loading-modal-content">
@@ -182,7 +164,6 @@
                     </div>
                     <div class="form-group">
                         <label class="checkbox-label" id="serviceManageableLabel"><input type="checkbox" id="serviceManageable"> Enable service management</label>
-                        <small class="form-hint" id="serviceManageableHint">Only available for Docker Compose and Systemctl services.</small>
                     </div>
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary" id="cancelServiceFormBtn">Cancel</button>
