@@ -94,6 +94,8 @@ let currentEditingServiceId = null;
 let currentServices = [];
 // Core infra entries that must not be deletable from the dashboard.
 const DISABLED_DELETE_IDS = ['docker', 'tomcat-service'];
+// Infra rows that get explicit Start/Restart controls (Docker also Stop).
+const INFRA_CONTROL_IDS = ['docker', 'tomcat-service'];
 
 function openSettingsModal() {
     document.getElementById('settingsModal').style.display = 'flex';
@@ -301,16 +303,17 @@ function fetchAllStatuses() {
 function renderRowActions(svc, status) {
     const slot = document.getElementById('svc-actions-' + svc.id);
     if (!slot) return;
-    const manageable = !!(svc.manageable && (svc.type === 'systemctl' || svc.type === 'docker-compose'));
-    if (!manageable) { slot.innerHTML = ''; return; }
+    // Explicit controls are offered only for the Docker and Tomcat rows,
+    // not for every manageable service.
+    if (INFRA_CONTROL_IDS.indexOf(svc.id) === -1) { slot.innerHTML = ''; return; }
     const actions = Array.isArray(svc.actions) ? svc.actions : [];
-    const isTomcat = svc.id === 'tomcat-service';
     const buttons = [];
     if (status === 'running') {
-        // Tomcat must never offer Stop (the server also rejects it).
-        if (!isTomcat && actions.indexOf('stop') !== -1) buttons.push({ a: 'stop', label: 'Stop', cls: 'btn-stop' });
         if (actions.indexOf('restart') !== -1) buttons.push({ a: 'restart', label: 'Restart', cls: 'btn-restart' });
-    } else if (status === 'stopped') {
+        // Stop is offered for Docker only; Tomcat must never be stopped.
+        if (svc.id === 'docker' && actions.indexOf('stop') !== -1) buttons.push({ a: 'stop', label: 'Stop', cls: 'btn-stop' });
+    } else {
+        // Stopped or unknown state: offer Start so the row stays actionable.
         if (actions.indexOf('start') !== -1) buttons.push({ a: 'start', label: 'Start', cls: 'btn-start' });
     }
     slot.innerHTML = buttons.map(b =>
@@ -707,50 +710,6 @@ function fetchLogs(service) {
         });
 }
 
-// ==================== Legacy restart for logo menu ====================
-let currentRestartType = null;
-
-function confirmRestart(service) {
-    currentRestartType = service;
-    const nameElem = document.getElementById('restartServiceName');
-    if (nameElem) {
-        if (service === 'tomcat') {
-            nameElem.textContent = 'Tomcat Server';
-        } else if (service === 'docker') {
-            nameElem.textContent = 'Docker Service';
-        } else {
-            nameElem.textContent = service;
-        }
-    }
-    document.getElementById('restartConfirmModal').style.display = 'flex';
-}
-
-function closeRestartModal() {
-    document.getElementById('restartConfirmModal').style.display = 'none';
-    currentRestartType = null;
-}
-
-function executeRestart(service) {
-    const loadingModal = document.getElementById('loadingModal');
-    const loadingText = document.getElementById('loadingText');
-    loadingText.innerText = `Restarting ${service}...`;
-    loadingModal.style.display = 'flex';
-
-    callServiceAPI({ service: service, action: 'restart' })
-        .then(data => {
-            loadingModal.style.display = 'none';
-            if (data.success) {
-                alert(`${service} restarted successfully.`);
-            } else {
-                alert(`Error restarting ${service}: ${data.error}`);
-            }
-        })
-        .catch(err => {
-            loadingModal.style.display = 'none';
-            alert(`Failed to restart ${service}: ${err.message}`);
-        });
-}
-
 // ==================== Helper Functions ====================
 function escapeHtml(text) {
     const div = document.createElement('div');
@@ -803,21 +762,25 @@ function loadAndRenderServices() {
                 card.className = 'col-md-4';
 
                 const canManage = svc.manageable && (svc.type === 'docker-compose' || svc.type === 'systemctl');
-                let openHref = null;
-                let openText = '';
+                // Support one "Open" target via openUrl, or several explicit links
+                // (the Tomcat card exposes both Tomcat Manager and Host Manager).
+                const footerLinks = [];
                 if (typeof svc.openUrl === 'string' && svc.openUrl.trim() !== '') {
-                    openHref = resolveOpenUrl(svc.openUrl.trim());
-                    openText = `Open ${svc.name}`;
-                } else if (svc.links && svc.links.length > 0) {
-                    const link = svc.links[0];
-                    openHref = resolveOpenUrl(link.url);
-                    openText = link.text || `Open ${svc.name}`;
+                    footerLinks.push({ url: resolveOpenUrl(svc.openUrl.trim()), text: `Open ${svc.name}` });
+                } else if (Array.isArray(svc.links)) {
+                    svc.links.forEach(link => {
+                        if (link && link.url) footerLinks.push({ url: resolveOpenUrl(String(link.url)), text: link.text || `Open ${svc.name}` });
+                    });
                 }
-                const hasOpen = !!openHref;
+                const hasOpen = footerLinks.length > 0;
+
+                const linkButtons = footerLinks.map(l =>
+                    `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer" class="card-link-sm"><i class="fas fa-external-link-alt"></i> ${escapeHtml(l.text)}</a>`
+                ).join('');
 
                 const footerHtml = (canManage || hasOpen)
                     ? `<div class="card-footer-right">
-                        <div class="card-footer-links">${hasOpen ? `<a href="${escapeHtml(openHref)}" target="_blank" rel="noopener noreferrer" class="card-link-sm"><i class="fas fa-external-link-alt"></i> ${escapeHtml(openText)}</a>` : ''}</div>
+                        <div class="card-footer-links">${linkButtons}</div>
                         ${canManage ? `<a href="#" class="manage-btn" data-service="${escapeHtml(svc.id)}"><i class="fas fa-cog"></i> Manage</a>` : ''}
                        </div>`
                     : '';
@@ -853,57 +816,12 @@ function loadAndRenderServices() {
 // ==================== Initialization ====================
 document.addEventListener('DOMContentLoaded', function() {
     
-    // --- Logo dropdown ---
-    const logoBtn = document.getElementById('logoMenuBtn');
-    const dropdown = document.getElementById('logoDropdown');
-    const versionBadge = document.getElementById('logoVersionBadge');
-    if (logoBtn && dropdown) {
-        if (versionBadge) {
-            versionBadge.addEventListener('click', (e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                dropdown.classList.toggle('show');
-            });
-        }
-        document.addEventListener('click', (e) => {
-            if (!logoBtn.contains(e.target)) dropdown.classList.remove('show');
-        });
-    }
-
     // --- Mobile menu button ---
     const mobileBtn = document.querySelector('.mobile-menu-btn');
     if (mobileBtn) mobileBtn.addEventListener('click', toggleMobileMenu);
 
     // --- Load service cards dynamically ---
     loadAndRenderServices();
-
-    // --- RESTART LINKS in logo dropdown ---
-    document.querySelectorAll('.restart-link').forEach(link => {
-        link.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            const service = this.dataset.restart;
-            if (service) confirmRestart(service);
-        });
-    });
-
-    // --- Legacy restart confirm button ---
-    const confirmRestartBtn = document.getElementById('confirmRestartBtn');
-    if (confirmRestartBtn) {
-        confirmRestartBtn.addEventListener('click', function() {
-            if (currentRestartType) {
-                const service = currentRestartType;
-                closeRestartModal();
-                executeRestart(service);
-            }
-        });
-    }
-
-    // --- Legacy restart cancel button ---
-    const cancelRestartBtn = document.getElementById('cancelRestartBtn');
-    if (cancelRestartBtn) {
-        cancelRestartBtn.addEventListener('click', closeRestartModal);
-    }
 
     // --- Close service modal button ---
     const closeServiceModalBtn = document.getElementById('closeServiceModalBtn');
@@ -975,7 +893,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- Keyboard Escape handler ---
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            closeRestartModal();
             closeServiceModal();
             closeSettingsModal();
             closeServiceForm();
@@ -983,9 +900,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // --- Click outside modals to close ---
-    document.getElementById('restartConfirmModal').addEventListener('click', (e) => {
-        if (e.target === document.getElementById('restartConfirmModal')) closeRestartModal();
-    });
     document.getElementById('serviceModal').addEventListener('click', (e) => {
         if (e.target === document.getElementById('serviceModal')) closeServiceModal();
     });

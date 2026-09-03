@@ -190,12 +190,14 @@
       "icon": "fab fa-docker",
       "type": "systemctl",
       "service": "docker",
-      "description": "<p>Docker engine management. Restart Docker daemon if needed.</p>",
+      "description": "<p>Docker engine management. Start, stop, or restart the Docker daemon.</p>",
       "links": [],
       "visible": false,
       "manageable": true,
       "actions": [
         "status",
+        "start",
+        "stop",
         "restart"
       ],
       "createdAt": "2026-09-03T00:00:00Z"
@@ -211,6 +213,11 @@
         {
           "text": "Open Tomcat Manager",
           "url": "/manager/html",
+          "btn": true
+        },
+        {
+          "text": "Open Host Manager",
+          "url": "/host-manager",
           "btn": true
         }
       ],
