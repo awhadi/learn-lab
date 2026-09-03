@@ -31,15 +31,34 @@
       "createdAt": "2026-09-03T00:00:00Z"
     },
     {
-      "id": "pgadmin4",
-      "name": "Database",
+      "id": "postgresql",
+      "name": "PostgreSQL",
       "icon": "fas fa-database",
+      "type": "systemctl",
+      "service": "postgresql",
+      "description": "<p>PostgreSQL relational database server used by the lab services. Manage the <code>postgresql</code> systemd service (status / start / stop / restart / logs) from here.</p>",
+      "links": [],
+      "visible": true,
+      "manageable": true,
+      "actions": [
+        "status",
+        "start",
+        "stop",
+        "restart",
+        "logs"
+      ],
+      "createdAt": "2026-09-03T00:00:00Z"
+    },
+    {
+      "id": "pgadmin4",
+      "name": "Database Tools",
+      "icon": "fas fa-table",
       "type": "docker-compose",
       "composePath": "/srv/docker-compose/pgadmin4",
       "description": "<p>PostgreSQL database management via pgAdmin 4. Use to inspect Pega rules and data tables.</p><p><strong>Access:</strong> <a href=\"/pgadmin4\" target=\"_blank\">/pgadmin4</a></p><p><strong>Login:</strong> admin@awhadi.online</p><p><em>Password: ask the lab administrator.</em></p>",
       "links": [
         {
-          "text": "Open Database",
+          "text": "Open Database Tools",
           "url": "/pgadmin4",
           "btn": true
         }
@@ -53,60 +72,6 @@
         "restart",
         "logs"
       ],
-      "createdAt": "2026-09-03T00:00:00Z"
-    },
-    {
-      "id": "rest-service",
-      "name": "REST Service",
-      "icon": "fas fa-code",
-      "type": "static",
-      "description": "<p>Pega's built-in REST API layer. Create and expose Service REST rules for integration with external systems.</p><p><strong>Endpoint:</strong> <code>/RestService</code></p>",
-      "links": [
-        {
-          "text": "Open REST",
-          "url": "/RestService",
-          "btn": true
-        }
-      ],
-      "visible": true,
-      "manageable": false,
-      "actions": [],
-      "createdAt": "2026-09-03T00:00:00Z"
-    },
-    {
-      "id": "soap-service",
-      "name": "SOAP Service",
-      "icon": "fas fa-exchange-alt",
-      "type": "static",
-      "description": "<p>Expose or consume SOAP web services using Pega's SOAP integration rules.</p><p><strong>Endpoint:</strong> <code>/SoapService</code></p>",
-      "links": [
-        {
-          "text": "Open SOAP",
-          "url": "/SoapService",
-          "btn": true
-        }
-      ],
-      "visible": true,
-      "manageable": false,
-      "actions": [],
-      "createdAt": "2026-09-03T00:00:00Z"
-    },
-    {
-      "id": "dx-api",
-      "name": "DX-API",
-      "icon": "fab fa-react",
-      "type": "static",
-      "description": "<p>Pega Digital Experience API - modernised REST endpoints for UI and headless frontends.</p><p><strong>Base URL:</strong> <code>/DX-API</code></p>",
-      "links": [
-        {
-          "text": "Open DX-API",
-          "url": "/DX-API",
-          "btn": true
-        }
-      ],
-      "visible": true,
-      "manageable": false,
-      "actions": [],
       "createdAt": "2026-09-03T00:00:00Z"
     },
     {
@@ -182,6 +147,60 @@
         "restart",
         "logs"
       ],
+      "createdAt": "2026-09-03T00:00:00Z"
+    },
+    {
+      "id": "rest-service",
+      "name": "REST Service",
+      "icon": "fas fa-code",
+      "type": "static",
+      "description": "<p>Pega's built-in REST API layer. Create and expose Service REST rules for integration with external systems.</p><p><strong>Endpoint:</strong> <code>/RestService</code></p>",
+      "links": [
+        {
+          "text": "Open REST",
+          "url": "/RestService",
+          "btn": true
+        }
+      ],
+      "visible": false,
+      "manageable": false,
+      "actions": [],
+      "createdAt": "2026-09-03T00:00:00Z"
+    },
+    {
+      "id": "soap-service",
+      "name": "SOAP Service",
+      "icon": "fas fa-exchange-alt",
+      "type": "static",
+      "description": "<p>Expose or consume SOAP web services using Pega's SOAP integration rules.</p><p><strong>Endpoint:</strong> <code>/SoapService</code></p>",
+      "links": [
+        {
+          "text": "Open SOAP",
+          "url": "/SoapService",
+          "btn": true
+        }
+      ],
+      "visible": false,
+      "manageable": false,
+      "actions": [],
+      "createdAt": "2026-09-03T00:00:00Z"
+    },
+    {
+      "id": "dx-api",
+      "name": "DX-API",
+      "icon": "fab fa-react",
+      "type": "static",
+      "description": "<p>Pega Digital Experience API - modernised REST endpoints for UI and headless frontends.</p><p><strong>Base URL:</strong> <code>/DX-API</code></p>",
+      "links": [
+        {
+          "text": "Open DX-API",
+          "url": "/DX-API",
+          "btn": true
+        }
+      ],
+      "visible": false,
+      "manageable": false,
+      "actions": [],
       "createdAt": "2026-09-03T00:00:00Z"
     },
     {

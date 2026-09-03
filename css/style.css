@@ -1023,7 +1023,6 @@ body.disclaimer-open main {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    flex-wrap: wrap;
     border-top: 1px solid var(--border);
 }
 .card-footer-links {
@@ -1031,9 +1030,13 @@ body.disclaimer-open main {
     align-items: center;
     gap: 6px;
     flex-wrap: wrap;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 .card-footer-right .manage-btn {
     margin-left: 0;
+    flex: 0 0 auto;
+    align-self: center;
 }
 .card-link-sm {
     font-size: 13px;
@@ -1561,4 +1564,20 @@ input:checked + .toggle-slider:before {
     .svc-actions {
         margin-left: 0;
     }
+}
+
+/* ================= Service form: uniform field sizing ================= */
+.service-form-content .form-group input[type="text"],
+.service-form-content .form-group input[type="url"],
+.service-form-content .form-group select {
+    width: 100%;
+    min-height: 46px;
+    box-sizing: border-box;
+}
+.service-form-content .form-group select {
+    padding: 12px;
+}
+.service-form-content .form-group textarea {
+    width: 100%;
+    box-sizing: border-box;
 }
