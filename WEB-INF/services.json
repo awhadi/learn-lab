@@ -1,0 +1,232 @@
+{
+  "services": [
+    {
+      "id": "tomcat",
+      "name": "Pega Infinity",
+      "icon": "fas fa-cogs",
+      "type": "static",
+      "description": "<p>Core Pega Platform - build and run business applications. Access via Basic Auth, SSO (Keycloak), or LDAP.</p><ul><li><strong>Basic Auth:</strong> <a href=\"https://pega.awhadi.online/prweb/PRAuth\" target=\"_blank\">https://pega.awhadi.online/prweb/PRAuth</a></li><li><strong>SSO (Keycloak):</strong> <a href=\"https://pega.awhadi.online/prweb/PRAuth/keycloak\" target=\"_blank\">https://pega.awhadi.online/prweb/PRAuth/keycloak</a></li><li><strong>LDAP:</strong> <a href=\"https://pega.awhadi.online/prweb/PRWebLDAP1\" target=\"_blank\">https://pega.awhadi.online/prweb/PRWebLDAP1</a></li></ul><p><strong>Credentials (demo):</strong> demoadmin1 / awhadi.online, demoadmin2 / awhadi.online</p><p><strong>LDAP user:</strong> testuser / awhadi.online</p>",
+      "visible": true,
+      "manageable": false,
+      "actions": [],
+      "createdAt": "2026-09-03T00:00:00Z",
+      "openUrl": "https://pega.awhadi.online/prweb/PRAuth"
+    },
+    {
+      "id": "uplus",
+      "name": "U+",
+      "icon": "fas fa-globe",
+      "type": "static",
+      "description": "<p>Pega's omnichannel customer engagement suite: Mashup, Marketing, Knowledge, Chat, Co-Browse.</p><p><a href=\"/uplus\" target=\"_blank\">/uplus</a></p><p><small>Use Pega credentials to log in.</small></p>",
+      "links": [
+        {
+          "text": "Open U+",
+          "url": "/uplus",
+          "btn": true
+        }
+      ],
+      "visible": true,
+      "manageable": false,
+      "actions": [],
+      "createdAt": "2026-09-03T00:00:00Z"
+    },
+    {
+      "id": "pgadmin4",
+      "name": "Database",
+      "icon": "fas fa-database",
+      "type": "docker-compose",
+      "composePath": "/srv/docker-compose/pgadmin4",
+      "description": "<p>PostgreSQL database management via pgAdmin 4. Use to inspect Pega rules and data tables.</p><p><strong>Access:</strong> <a href=\"/pgadmin4\" target=\"_blank\">/pgadmin4</a></p><p><strong>Login:</strong> admin@awhadi.online / awhadi.online</p>",
+      "links": [
+        {
+          "text": "Open Database",
+          "url": "/pgadmin4",
+          "btn": true
+        }
+      ],
+      "visible": true,
+      "manageable": true,
+      "actions": [
+        "status",
+        "start",
+        "stop",
+        "restart",
+        "logs"
+      ],
+      "createdAt": "2026-09-03T00:00:00Z"
+    },
+    {
+      "id": "rest-service",
+      "name": "REST Service",
+      "icon": "fas fa-code",
+      "type": "static",
+      "description": "<p>Pega's built-in REST API layer. Create and expose Service REST rules for integration with external systems.</p><p><strong>Endpoint:</strong> <code>/RestService</code></p>",
+      "links": [
+        {
+          "text": "Open REST",
+          "url": "/RestService",
+          "btn": true
+        }
+      ],
+      "visible": true,
+      "manageable": false,
+      "actions": [],
+      "createdAt": "2026-09-03T00:00:00Z"
+    },
+    {
+      "id": "soap-service",
+      "name": "SOAP Service",
+      "icon": "fas fa-exchange-alt",
+      "type": "static",
+      "description": "<p>Expose or consume SOAP web services using Pega's SOAP integration rules.</p><p><strong>Endpoint:</strong> <code>/SoapService</code></p>",
+      "links": [
+        {
+          "text": "Open SOAP",
+          "url": "/SoapService",
+          "btn": true
+        }
+      ],
+      "visible": true,
+      "manageable": false,
+      "actions": [],
+      "createdAt": "2026-09-03T00:00:00Z"
+    },
+    {
+      "id": "dx-api",
+      "name": "DX-API",
+      "icon": "fab fa-react",
+      "type": "static",
+      "description": "<p>Pega Digital Experience API - modernised REST endpoints for UI and headless frontends.</p><p><strong>Base URL:</strong> <code>/DX-API</code></p>",
+      "links": [
+        {
+          "text": "Open DX-API",
+          "url": "/DX-API",
+          "btn": true
+        }
+      ],
+      "visible": true,
+      "manageable": false,
+      "actions": [],
+      "createdAt": "2026-09-03T00:00:00Z"
+    },
+    {
+      "id": "filebrowser",
+      "name": "File Browser",
+      "icon": "fas fa-folder-open",
+      "type": "docker-compose",
+      "composePath": "/srv/docker-compose/filebrowserquantum",
+      "description": "<p>Web-based file manager. Browse and download logs, configuration, and exported data from the server.</p><p><a href=\"/filebrowser\" target=\"_blank\">/filebrowser</a></p>",
+      "links": [
+        {
+          "text": "Open File Browser",
+          "url": "/filebrowser",
+          "btn": true
+        }
+      ],
+      "visible": true,
+      "manageable": true,
+      "actions": [
+        "status",
+        "start",
+        "stop",
+        "restart",
+        "logs"
+      ],
+      "createdAt": "2026-09-03T00:00:00Z"
+    },
+    {
+      "id": "mailpit",
+      "name": "Mailpit",
+      "icon": "fas fa-envelope",
+      "type": "docker-compose",
+      "composePath": "/srv/docker-compose/mailpit",
+      "description": "<p>Email testing tool. Captures emails sent from Pega (Correspondence, Marketing) for inspection.</p><p><a href=\"/mailpit\" target=\"_blank\">/mailpit</a></p>",
+      "links": [
+        {
+          "text": "Open Mailpit",
+          "url": "/mailpit",
+          "btn": true
+        }
+      ],
+      "visible": true,
+      "manageable": true,
+      "actions": [
+        "status",
+        "start",
+        "stop",
+        "restart",
+        "logs"
+      ],
+      "createdAt": "2026-09-03T00:00:00Z"
+    },
+    {
+      "id": "kafkaui",
+      "name": "Kafka-UI",
+      "icon": "fab fa-docker",
+      "type": "docker-compose",
+      "composePath": "/srv/docker-compose/kafkaui",
+      "description": "<p>Monitor and manage Kafka topics used by Pega's event streaming and queue processing.</p><p><a href=\"/kafkaui\" target=\"_blank\">/kafkaui</a></p>",
+      "links": [
+        {
+          "text": "Open Kafka-UI",
+          "url": "/kafkaui",
+          "btn": true
+        }
+      ],
+      "visible": true,
+      "manageable": true,
+      "actions": [
+        "status",
+        "start",
+        "stop",
+        "restart",
+        "logs"
+      ],
+      "createdAt": "2026-09-03T00:00:00Z"
+    },
+    {
+      "id": "docker",
+      "name": "Docker",
+      "icon": "fab fa-docker",
+      "type": "systemctl",
+      "service": "docker",
+      "description": "<p>Docker engine management. Restart Docker daemon if needed.</p>",
+      "links": [],
+      "visible": false,
+      "manageable": true,
+      "actions": [
+        "status",
+        "restart"
+      ],
+      "createdAt": "2026-09-03T00:00:00Z"
+    },
+    {
+      "id": "tomcat-service",
+      "name": "Tomcat",
+      "icon": "fas fa-server",
+      "type": "systemctl",
+      "service": "tomcat",
+      "description": "<p>Apache Tomcat server management. Start, stop, and restart the Tomcat instance.</p>",
+      "links": [
+        {
+          "text": "Open Tomcat Manager",
+          "url": "/manager/html",
+          "btn": true
+        }
+      ],
+      "visible": true,
+      "manageable": true,
+      "actions": [
+        "status",
+        "start",
+        "stop",
+        "restart",
+        "logs"
+      ],
+      "createdAt": "2026-09-03T00:00:00Z"
+    }
+  ],
+  "settings": {
+    "composeBasePath": "/srv/docker-compose"
+  }
+}

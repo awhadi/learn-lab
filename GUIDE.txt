@@ -1,0 +1,63 @@
+================================================================
+  Pega Lab — Passwordless Sudo Setup Guide
+================================================================
+
+The service_api.jsp calls service_control.sh via sudo. For this to
+work without prompting for a password, the Tomcat user (or any user
+running the webapp) needs passwordless sudo access to the script.
+
+----------------------------------------------------------------
+  Option 1 — Automated (recommended)
+----------------------------------------------------------------
+
+  Copy manage_sudoers.sh to the server and run:
+
+    scp manage_sudoers.sh root@YOUR_SERVER:/tmp/
+    ssh root@YOUR_SERVER
+
+    # Interactive mode:
+    sudo bash /tmp/manage_sudoers.sh
+
+    # Or directly:
+    sudo bash /tmp/manage_sudoers.sh --add-user tomcat
+
+  Works on both Linux and macOS.
+
+----------------------------------------------------------------
+  Option 2 — Manual with visudo (Linux)
+----------------------------------------------------------------
+
+  Step 1: SSH into the server as root
+
+    ssh root@YOUR_SERVER
+
+  Step 2: Create the sudoers file
+
+    visudo -f /etc/sudoers.d/tomcat
+
+  Step 3: Add this single line (adjust user and path if needed):
+
+    tomcat  ALL=(ALL) NOPASSWD: /opt/tomcat/webapps/ROOT/service_control.sh
+
+  Step 4: Save and exit
+
+  Step 5: Set correct permissions
+
+    chmod 440 /etc/sudoers.d/tomcat
+
+  Step 6: Verify
+
+    sudo -u tomcat sudo /opt/tomcat/webapps/ROOT/service_control.sh status
+
+    Should return "active" or "inactive" without asking for password.
+
+----------------------------------------------------------------
+  Notes
+----------------------------------------------------------------
+
+  - The NOPASSWD rule locks access to ONE script only — the user
+    cannot run arbitrary commands with sudo.
+  - If you deploy to a different path, update both the sudoers
+    rule AND the path in service_api.jsp.
+  - Syntax errors in sudoers can lock you out. Always use visudo.
+================================================================
