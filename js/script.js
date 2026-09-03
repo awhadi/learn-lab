@@ -197,14 +197,18 @@ function renderServicesList(services) {
 
     // Mouse drag & drop reordering (desktop); the up/down buttons stay for touch/keyboard.
     let dragFromIndex = null;
+    let dragId = null;
     const rows = Array.prototype.slice.call(container.children);
     rows.forEach(row => {
         row.addEventListener('dragstart', function(e) {
-            dragFromIndex = rows.indexOf(this);
+            const idx = rows.indexOf(this);
+            dragFromIndex = idx;
+            dragId = this.dataset.id || (services[idx] ? services[idx].id : null);
+            if (dragId === null) { e.preventDefault(); return; }
             this.classList.add('dragging');
             if (e.dataTransfer) {
                 e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', this.dataset.id || '');
+                e.dataTransfer.setData('text/plain', dragId);
             }
         });
         row.addEventListener('dragover', function(e) {
@@ -217,26 +221,36 @@ function renderServicesList(services) {
         row.addEventListener('dragleave', function() {
             this.classList.remove('drag-over');
         });
-        row.addEventListener('drop', function(e) {
-            e.preventDefault();
-            container.querySelectorAll('.drag-over, .dragging').forEach(r => r.classList.remove('drag-over', 'dragging'));
-            const fromIndex = dragFromIndex;
-            dragFromIndex = null;
-            if (fromIndex === null) return;
-            const targetIndex = rows.indexOf(this);
-            if (targetIndex === -1) return;
-            const rect = this.getBoundingClientRect();
-            const below = (e.clientY - rect.top) > (rect.height / 2);
-            const boundary = below ? targetIndex + 1 : targetIndex;
-            const toIndex = (boundary > fromIndex) ? boundary - 1 : boundary;
-            if (toIndex === fromIndex) return;
-            const draggedId = this.dataset.id || (services[fromIndex] ? services[fromIndex].id : null);
-            if (draggedId) reorderServiceTo(draggedId, toIndex);
-        });
         row.addEventListener('dragend', function() {
             container.querySelectorAll('.drag-over, .dragging').forEach(r => r.classList.remove('drag-over', 'dragging'));
             dragFromIndex = null;
+            dragId = null;
         });
+    });
+    // Allow the drop anywhere inside the list, then resolve the insertion index
+    // from the pointer position against each row's midpoint.
+    container.addEventListener('dragover', function(e) {
+        if (dragFromIndex === null) return;
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    });
+    container.addEventListener('drop', function(e) {
+        e.preventDefault();
+        container.querySelectorAll('.drag-over, .dragging').forEach(r => r.classList.remove('drag-over', 'dragging'));
+        if (dragFromIndex === null || dragId === null) { dragFromIndex = null; dragId = null; return; }
+        const fromIndex = dragFromIndex;
+        const movedId = dragId;
+        dragFromIndex = null;
+        dragId = null;
+        const y = e.clientY;
+        let boundary = rows.length;
+        for (let i = 0; i < rows.length; i++) {
+            const r = rows[i].getBoundingClientRect();
+            if (y < r.top + r.height / 2) { boundary = i; break; }
+        }
+        const toIndex = (boundary > fromIndex) ? boundary - 1 : boundary;
+        if (toIndex < 0 || toIndex >= rows.length || toIndex === fromIndex) return;
+        reorderServiceTo(movedId, toIndex);
     });
 
     // Non-manageable rows show a placeholder; fetch the rest in one batch call.
@@ -338,6 +352,7 @@ function reorderService(id, dir) {
         .then(data => {
             if (data.success) {
                 loadServicesList();
+                loadAndRenderServices();
             } else {
                 alert('Failed to reorder: ' + (data.error || 'Unknown'));
             }
@@ -352,6 +367,7 @@ function reorderServiceTo(id, toIndex) {
         .then(data => {
             if (data.success) {
                 loadServicesList();
+                loadAndRenderServices();
             } else {
                 alert('Failed to reorder: ' + (data.error || 'Unknown'));
             }
