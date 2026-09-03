@@ -298,10 +298,25 @@
 
     if (action != null && (action.equals("list_services") || action.equals("add_service") ||
         action.equals("update_service") || action.equals("delete_service") || action.equals("toggle_visible") ||
-        action.equals("reorder_service") || action.equals("batch_status"))) {
+        action.equals("reorder_service") || action.equals("batch_status") || action.equals("reset_services"))) {
 
         try {
             String jsonConfig = readConfigFile(configPath);
+
+            if ("reset_services".equals(action)) {
+                // Restore the shipped default config snapshot (see WEB-INF/services.default.json).
+                synchronized (CONFIG_LOCK) {
+                    Path df = Paths.get(application.getRealPath("/WEB-INF/services.default.json"));
+                    if (!Files.exists(df)) {
+                        out.print("{\"success\":false,\"error\":\"Default configuration file is missing on the server\"}");
+                        return;
+                    }
+                    String defaultCfg = new String(Files.readAllBytes(df), StandardCharsets.UTF_8);
+                    writeConfigFile(configPath, defaultCfg);
+                }
+                out.print("{\"success\":true,\"message\":\"Services reset to defaults\"}");
+                return;
+            }
 
             if ("list_services".equals(action)) {
                 out.print("{\"success\":true,\"config\":" + jsonConfig + "}");
