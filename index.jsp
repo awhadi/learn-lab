@@ -136,9 +136,9 @@
                     <div class="form-group">
                         <label for="serviceType">Service Type *</label>
                         <select id="serviceType" required>
+                            <option value="static" selected>Static (No Management)</option>
                             <option value="docker-compose">Docker Compose</option>
                             <option value="systemctl">Systemctl Service</option>
-                            <option value="static">Static (No Management)</option>
                         </select>
                     </div>
                     <div id="dockerComposeFields">
@@ -171,7 +171,7 @@
                     <div class="form-group">
                         <label for="serviceOpenUrl">Open Link (URL)</label>
                         <input type="text" id="serviceOpenUrl" placeholder="https://server.com/path or /path">
-                        <small class="form-hint">Full URL (https://...) or relative path (/path uses current domain)</small>
+                        <small class="form-hint">Full URL (https://...) or a path like /test or phpldapadmin — paths open on the current domain automatically.</small>
                     </div>
                     <div class="form-group">
                         <label for="serviceDescription">Description (HTML supported)</label>
@@ -181,7 +181,8 @@
                         <label class="checkbox-label"><input type="checkbox" id="serviceVisible" checked> Show on main page</label>
                     </div>
                     <div class="form-group">
-                        <label class="checkbox-label"><input type="checkbox" id="serviceManageable" checked> Enable service management</label>
+                        <label class="checkbox-label" id="serviceManageableLabel"><input type="checkbox" id="serviceManageable"> Enable service management</label>
+                        <small class="form-hint" id="serviceManageableHint">Only available for Docker Compose and Systemctl services.</small>
                     </div>
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary" id="cancelServiceFormBtn">Cancel</button>

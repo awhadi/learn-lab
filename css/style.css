@@ -1550,6 +1550,10 @@ input:checked + .toggle-slider:before {
     background: transparent;
     color: var(--text);
 }
+.checkbox-label.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
 @media (max-width: 768px) {
     .svc-actions {
         width: 100%;

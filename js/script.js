@@ -400,16 +400,20 @@ function openServiceForm(serviceId = null) {
     form.reset();
     document.getElementById('serviceFormId').value = '';
     document.getElementById('serviceVisible').checked = true;
-    document.getElementById('serviceManageable').checked = true;
     document.getElementById('serviceIcon').value = 'fas fa-cube';
+    const typeSelect = document.getElementById('serviceType');
     
     if (serviceId) {
         title.textContent = 'Edit Service';
         loadServiceForEdit(serviceId);
-        document.getElementById('serviceType').disabled = true;
+        typeSelect.disabled = true;
     } else {
         title.textContent = 'Add Service';
-        document.getElementById('serviceType').disabled = false;
+        typeSelect.disabled = false;
+        // New services default to Static; management (see checkbox) only applies
+        // to systemctl / docker-compose and is enabled when those types are picked.
+        typeSelect.value = 'static';
+        document.getElementById('serviceManageable').checked = false;
     }
     
     updateServiceTypeFields();
@@ -457,6 +461,26 @@ function updateServiceTypeFields() {
     const type = document.getElementById('serviceType').value;
     document.getElementById('dockerComposeFields').style.display = type === 'docker-compose' ? 'block' : 'none';
     document.getElementById('systemctlFields').style.display = type === 'systemctl' ? 'block' : 'none';
+    syncManageableField(type);
+}
+
+function syncManageableField(type) {
+    const manageableCheck = document.getElementById('serviceManageable');
+    if (!manageableCheck) return;
+    const label = document.getElementById('serviceManageableLabel');
+    const manageableType = type === 'systemctl' || type === 'docker-compose';
+    if (!manageableType) {
+        // Management applies only to systemctl / docker-compose services.
+        manageableCheck.checked = false;
+        manageableCheck.disabled = true;
+        if (label) label.classList.add('disabled');
+    } else {
+        const wasDisabled = manageableCheck.disabled;
+        manageableCheck.disabled = false;
+        if (label) label.classList.remove('disabled');
+        // In the Add flow, picking a manageable type pre-checks the option.
+        if (wasDisabled && currentEditingServiceId === null) manageableCheck.checked = true;
+    }
 }
 
 function updateComposeOptionFields() {
@@ -744,12 +768,15 @@ function sanitizeHtml(text) {
 
 function resolveOpenUrl(url) {
     if (!url) return '#';
+    const base = BASE_URL || window.location.origin;
     if (/^https?:\/\//i.test(url)) return url;
     // Block every non-http(s) scheme (javascript:, data:, vbscript:, ...).
     if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url)) return '#';
-    if (url.startsWith('/')) return url;
-    if (url === '' || url === '.') return '/';
-    return '/' + url;
+    // Relative paths and bare paths (e.g. /test, phpldapadmin) open on the current domain.
+    let path = url;
+    if (path === '' || path === '.') path = '/';
+    if (!path.startsWith('/')) path = '/' + path;
+    return base + path;
 }
 
 // ==================== Main Page Service Cards ====================

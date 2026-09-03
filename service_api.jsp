@@ -374,7 +374,9 @@
                 }
 
                 boolean isVisible = visibleParam == null || "true".equals(visibleParam);
-                boolean isManageable = manageableParam != null && "true".equals(manageableParam);
+                // Management only makes sense for systemctl / docker-compose services.
+                boolean isManageable = manageableParam != null && "true".equals(manageableParam)
+                    && ("systemctl".equals(type) || "docker-compose".equals(type));
 
                 StringBuilder svcJson = new StringBuilder();
                 svcJson.append("{\"id\":\"").append(escapeJsonStr(id)).append("\"");
