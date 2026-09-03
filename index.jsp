@@ -96,6 +96,7 @@
             <div class="settings-modal-body">
                 <div class="settings-toolbar">
                     <button class="btn btn-primary" id="addServiceBtn"><i class="fas fa-plus"></i> Add Service</button>
+                    <button class="btn btn-secondary" id="resetServicesBtn" title="Restore the default service list and settings"><i class="fas fa-undo-alt"></i> Reset to default</button>
                 </div>
                 <div class="services-list" id="servicesList"></div>
             </div>

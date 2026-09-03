@@ -391,6 +391,25 @@ function toggleServiceVisibility(id) {
         });
 }
 
+function resetServicesToDefault() {
+    if (!confirm('Reset all services to the default settings?\n\nThis restores the original service list (names, descriptions, order, visibility) and removes any services you added or edited.')) {
+        return;
+    }
+    callServiceAPI({ action: 'reset_services' })
+        .then(data => {
+            if (data.success) {
+                alert('Services have been reset to defaults.');
+                loadServicesList();
+                loadAndRenderServices();
+            } else {
+                alert('Reset failed: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            alert('Reset failed: ' + err.message);
+        });
+}
+
 // ==================== Add/Edit Service ====================
 function openServiceForm(serviceId = null) {
     currentEditingServiceId = serviceId;
@@ -843,6 +862,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const addServiceBtn = document.getElementById('addServiceBtn');
     if (addServiceBtn) {
         addServiceBtn.addEventListener('click', () => openServiceForm());
+    }
+
+    // --- Reset to default button ---
+    const resetServicesBtn = document.getElementById('resetServicesBtn');
+    if (resetServicesBtn) {
+        resetServicesBtn.addEventListener('click', resetServicesToDefault);
     }
 
     // --- Service form type change ---
