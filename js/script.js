@@ -1,5 +1,5 @@
 // ==================== CONFIG (set by JSP) ====================
-const API_TOKEN = window.SERVICES_CONFIG ? window.SERVICES_CONFIG.token : "K9mX2pR7vL5nB8wD4jH6fT3cY1aG0sE9qW2";
+// No client-side secret: the lab control API is open by design (see service_api.jsp).
 const BASE_URL = window.SERVICES_CONFIG ? window.SERVICES_CONFIG.baseUrl : "";
 
 // ==================== Theme management ====================
@@ -30,11 +30,17 @@ function toggleMobileMenu() {
 }
 
 // ==================== Time display ====================
-function startTime() {
-    const today = new Date();
+let clockTimer = null;
+function tickClock() {
     const timeElem = document.getElementById('time');
-    if (timeElem) timeElem.innerHTML = today.toLocaleString();
-    setTimeout(startTime, 500);
+    if (timeElem) timeElem.innerHTML = new Date().toLocaleString();
+}
+function startTime() {
+    tickClock();
+    if (clockTimer) clearInterval(clockTimer);
+    // Refresh once per second, paused while the tab is hidden.
+    clockTimer = setInterval(() => { if (!document.hidden) tickClock(); }, 1000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) tickClock(); });
 }
 
 // ==================== Disclaimer ====================
@@ -73,16 +79,21 @@ function checkDisclaimerStatus() {
 
 // ==================== API Functions ====================
 function callServiceAPI(params) {
-    let url = `/service_api.jsp?token=${encodeURIComponent(API_TOKEN)}`;
+    const qs = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
-        url += `&${key}=${encodeURIComponent(value)}`;
+        qs.set(key, value);
     }
+    const q = qs.toString();
+    const url = q ? `/service_api.jsp?${q}` : '/service_api.jsp';
     return fetch(url, { method: params.action === 'list_services' ? 'GET' : (params.action === 'add_service' || params.action === 'update_service' || params.action === 'delete_service' ? 'POST' : (params.action === 'status' || params.action === 'logs' ? 'GET' : 'POST')) })
         .then(r => r.json());
 }
 
 // ==================== Settings Modal (Admin Panel) ====================
 let currentEditingServiceId = null;
+let currentServices = [];
+// Core infra entries that must not be deletable from the dashboard.
+const DISABLED_DELETE_IDS = ['docker', 'tomcat-service'];
 
 function openSettingsModal() {
     document.getElementById('settingsModal').style.display = 'flex';
@@ -114,81 +125,141 @@ function loadServicesList() {
 function renderServicesList(services) {
     const container = document.getElementById('servicesList');
     container.innerHTML = '';
-    
-    if (services.length === 0) {
+    currentServices = services;
+
+    if (!services || services.length === 0) {
         container.innerHTML = '<p class="empty-state">No services configured. Click "Add Service" to get started.</p>';
         return;
     }
-    
+
     services.forEach((svc, index) => {
+        const isInfraDelete = DISABLED_DELETE_IDS.indexOf(svc.id) !== -1;
         const item = document.createElement('div');
         item.className = 'service-list-item';
+        item.draggable = true;
+        item.dataset.id = svc.id;
         item.innerHTML = `
             <div class="service-list-reorder">
-                <button class="reorder-btn btn-move-up" data-id="${svc.id}" title="Move up" ${index === 0 ? 'disabled' : ''}><i class="fas fa-chevron-up"></i></button>
-                <button class="reorder-btn btn-move-down" data-id="${svc.id}" title="Move down" ${index === services.length - 1 ? 'disabled' : ''}><i class="fas fa-chevron-down"></i></button>
+                <button class="reorder-btn btn-move-up" data-id="${escapeHtml(svc.id)}" title="Move up" ${index === 0 ? 'disabled' : ''}><i class="fas fa-chevron-up"></i></button>
+                <button class="reorder-btn btn-move-down" data-id="${escapeHtml(svc.id)}" title="Move down" ${index === services.length - 1 ? 'disabled' : ''}><i class="fas fa-chevron-down"></i></button>
             </div>
             <div class="service-list-info">
-                <div class="service-list-icon"><i class="${svc.icon || 'fas fa-cube'}"></i></div>
+                <div class="service-list-icon"><i class="${escapeHtml(svc.icon || 'fas fa-cube')}"></i></div>
                 <div class="service-list-details">
-                    <h4>${escapeHtml(svc.name)} <span class="svc-status-badge" data-svc="${svc.id}" id="svc-status-${svc.id}">...</span></h4>
-                    <p>${svc.type} ${svc.manageable ? '• Manageable' : ''}</p>
+                    <h4>${escapeHtml(svc.name)} <span class="svc-status-badge" data-svc="${escapeHtml(svc.id)}" id="svc-status-${escapeHtml(svc.id)}">…</span></h4>
+                    <p>${escapeHtml(svc.type)} ${svc.manageable ? '• Manageable' : ''}</p>
                 </div>
             </div>
+            <div class="svc-actions" id="svc-actions-${escapeHtml(svc.id)}" data-id="${escapeHtml(svc.id)}"></div>
             <div class="service-list-actions">
-                <label class="toggle-switch" title="${svc.visible ? 'Hide from main page' : 'Show on main page'}">
-                    <input type="checkbox" class="visibility-toggle" data-id="${svc.id}" data-visible="${svc.visible}" ${svc.visible ? 'checked' : ''}>
+                <label class="toggle-switch" title="${svc.visible ? 'Hide from main page (service keeps running)' : 'Show on main page (service keeps running)'}">
+                    <input type="checkbox" class="visibility-toggle" data-id="${escapeHtml(svc.id)}" data-visible="${svc.visible}" ${svc.visible ? 'checked' : ''}>
                     <span class="toggle-slider"></span>
                 </label>
-                <button class="text-btn btn-edit" data-id="${svc.id}" title="Edit"><i class="fas fa-pencil-alt"></i> Edit</button>
-                <button class="text-btn btn-delete" data-id="${svc.id}" title="Delete"><i class="fas fa-times"></i> Delete</button>
+                <button class="text-btn btn-edit" data-id="${escapeHtml(svc.id)}" title="Edit ${escapeHtml(svc.name)}"><i class="fas fa-pencil-alt"></i> Edit</button>
+                <button class="text-btn btn-delete${isInfraDelete ? ' is-disabled' : ''}" data-id="${escapeHtml(svc.id)}" ${isInfraDelete ? 'disabled' : ''} title="${isInfraDelete ? 'Core service — cannot delete' : 'Delete ' + escapeHtml(svc.name)}" aria-label="${isInfraDelete ? 'Delete disabled for core service' : 'Delete ' + escapeHtml(svc.name)}"><i class="fas fa-times"></i></button>
             </div>
         `;
         container.appendChild(item);
     });
-    
+
     // Add event listeners
     container.querySelectorAll('.visibility-toggle').forEach(toggle => {
         toggle.addEventListener('change', function() {
-            toggleServiceVisibility(this.dataset.id, this.dataset.visible === 'true');
+            toggleServiceVisibility(this.dataset.id);
         });
     });
-    
+
     container.querySelectorAll('.btn-edit').forEach(btn => {
         btn.addEventListener('click', function() {
             editService(this.dataset.id);
         });
     });
-    
+
     container.querySelectorAll('.btn-delete').forEach(btn => {
+        if (btn.disabled) return;
         btn.addEventListener('click', function() {
             deleteService(this.dataset.id);
         });
     });
-    
+
     container.querySelectorAll('.btn-move-up').forEach(btn => {
         btn.addEventListener('click', function() {
             reorderService(this.dataset.id, 'up');
         });
     });
-    
+
     container.querySelectorAll('.btn-move-down').forEach(btn => {
         btn.addEventListener('click', function() {
             reorderService(this.dataset.id, 'down');
         });
     });
-    
-    // Fetch all statuses in one batch call
-    const manageableIds = services.filter(s => s.manageable).map(s => s.id);
+
+    // Mouse drag & drop reordering (desktop); the up/down buttons stay for touch/keyboard.
+    let dragFromIndex = null;
+    const rows = Array.prototype.slice.call(container.children);
+    rows.forEach(row => {
+        row.addEventListener('dragstart', function(e) {
+            dragFromIndex = rows.indexOf(this);
+            this.classList.add('dragging');
+            if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', this.dataset.id || '');
+            }
+        });
+        row.addEventListener('dragover', function(e) {
+            if (dragFromIndex === null) return;
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+            container.querySelectorAll('.drag-over').forEach(r => r.classList.remove('drag-over'));
+            this.classList.add('drag-over');
+        });
+        row.addEventListener('dragleave', function() {
+            this.classList.remove('drag-over');
+        });
+        row.addEventListener('drop', function(e) {
+            e.preventDefault();
+            container.querySelectorAll('.drag-over, .dragging').forEach(r => r.classList.remove('drag-over', 'dragging'));
+            const fromIndex = dragFromIndex;
+            dragFromIndex = null;
+            if (fromIndex === null) return;
+            const targetIndex = rows.indexOf(this);
+            if (targetIndex === -1) return;
+            const rect = this.getBoundingClientRect();
+            const below = (e.clientY - rect.top) > (rect.height / 2);
+            const boundary = below ? targetIndex + 1 : targetIndex;
+            const toIndex = (boundary > fromIndex) ? boundary - 1 : boundary;
+            if (toIndex === fromIndex) return;
+            const draggedId = this.dataset.id || (services[fromIndex] ? services[fromIndex].id : null);
+            if (draggedId) reorderServiceTo(draggedId, toIndex);
+        });
+        row.addEventListener('dragend', function() {
+            container.querySelectorAll('.drag-over, .dragging').forEach(r => r.classList.remove('drag-over', 'dragging'));
+            dragFromIndex = null;
+        });
+    });
+
+    // Non-manageable rows show a placeholder; fetch the rest in one batch call.
     services.forEach(svc => {
         if (!svc.manageable) {
             const badge = document.getElementById('svc-status-' + svc.id);
             if (badge) badge.textContent = '—';
         }
     });
-    if (manageableIds.length > 0) {
-        fetchAllStatuses();
-    }
+    fetchAllStatuses();
+}
+
+function statusLabel(status) {
+    if (status === 'running') return 'running';
+    if (status === 'stopped') return 'stopped';
+    if (status === 'static' || status === 'not-manageable') return '—';
+    return 'unknown';
+}
+
+function statusClass(status) {
+    if (status === 'running') return 'running';
+    if (status === 'stopped') return 'stopped';
+    return 'unknown';
 }
 
 function fetchAllStatuses() {
@@ -197,27 +268,68 @@ function fetchAllStatuses() {
             if (!data.success || !data.statuses) return;
             for (const [id, status] of Object.entries(data.statuses)) {
                 const badge = document.getElementById('svc-status-' + id);
-                if (!badge) continue;
-                if (status === 'running') {
-                    badge.textContent = 'running';
-                    badge.className = 'svc-status-badge status-running';
-                } else if (status === 'stopped') {
-                    badge.textContent = 'stopped';
-                    badge.className = 'svc-status-badge status-stopped';
-                } else if (status === 'static' || status === 'not-manageable') {
-                    badge.textContent = '—';
-                    badge.className = 'svc-status-badge status-unknown';
-                } else {
-                    badge.textContent = 'unknown';
-                    badge.className = 'svc-status-badge status-unknown';
+                if (badge) {
+                    badge.textContent = statusLabel(status);
+                    badge.className = 'svc-status-badge status-' + statusClass(status);
                 }
+                const svc = currentServices.find(s => s.id === id);
+                if (svc) renderRowActions(svc, status);
             }
         })
         .catch(() => {
-            services.forEach(svc => {
+            currentServices.forEach(svc => {
                 const badge = document.getElementById('svc-status-' + svc.id);
                 if (badge) { badge.textContent = 'unknown'; badge.className = 'svc-status-badge status-unknown'; }
             });
+        });
+}
+
+function renderRowActions(svc, status) {
+    const slot = document.getElementById('svc-actions-' + svc.id);
+    if (!slot) return;
+    const manageable = !!(svc.manageable && (svc.type === 'systemctl' || svc.type === 'docker-compose'));
+    if (!manageable) { slot.innerHTML = ''; return; }
+    const actions = Array.isArray(svc.actions) ? svc.actions : [];
+    const isTomcat = svc.id === 'tomcat-service';
+    const buttons = [];
+    if (status === 'running') {
+        // Tomcat must never offer Stop (the server also rejects it).
+        if (!isTomcat && actions.indexOf('stop') !== -1) buttons.push({ a: 'stop', label: 'Stop', cls: 'btn-stop' });
+        if (actions.indexOf('restart') !== -1) buttons.push({ a: 'restart', label: 'Restart', cls: 'btn-restart' });
+    } else if (status === 'stopped') {
+        if (actions.indexOf('start') !== -1) buttons.push({ a: 'start', label: 'Start', cls: 'btn-start' });
+    }
+    slot.innerHTML = buttons.map(b =>
+        `<button class="svc-action-btn ${b.cls}" data-id="${escapeHtml(svc.id)}" data-action="${b.a}">${b.label}</button>`
+    ).join('');
+    slot.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('click', () => rowAction(btn.dataset.id, btn.dataset.action, btn));
+    });
+}
+
+function rowAction(id, action, btn) {
+    const svc = currentServices.find(s => s.id === id);
+    const name = svc ? svc.name : id;
+    if (action === 'stop' || action === 'restart') {
+        if (!confirm(`Are you sure you want to ${action} ${name}?`)) return;
+    }
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '…';
+    callServiceAPI({ service: id, action: action })
+        .then(data => {
+            if (data.success) {
+                fetchAllStatuses();
+            } else {
+                alert(`Failed to ${action} ${name}: ${data.error || 'Unknown error'}`);
+                btn.disabled = false;
+                btn.textContent = originalLabel;
+            }
+        })
+        .catch(err => {
+            alert(`Failed to ${action} ${name}: ${err.message}`);
+            btn.disabled = false;
+            btn.textContent = originalLabel;
         });
 }
 
@@ -235,53 +347,31 @@ function reorderService(id, dir) {
         });
 }
 
-function toggleServiceVisibility(id, currentVisible) {
-    if (currentVisible) {
-        const confirmed = confirm('Hide this service?\n\nWould you also like to stop the running service?\n\nClick OK to STOP and HIDE, or Cancel to just HIDE.');
-        if (confirmed) {
-            callServiceAPI({ service: id, action: 'status' })
-                .then(statusData => {
-                    if (statusData.success && statusData.status === 'running') {
-                        callServiceAPI({ service: id, action: 'stop' })
-                            .then(() => {
-                                callServiceAPI({ action: 'toggle_visible', id: id })
-                                    .then(data => {
-                                        if (data.success) loadServicesList();
-                                        else alert('Failed: ' + (data.error || 'Unknown'));
-                                    });
-                            })
-                            .catch(() => {
-                                callServiceAPI({ action: 'toggle_visible', id: id })
-                                    .then(data => { if (data.success) loadServicesList(); });
-                            });
-                    } else {
-                        callServiceAPI({ action: 'toggle_visible', id: id })
-                            .then(data => {
-                                if (data.success) loadServicesList();
-                                else alert('Failed: ' + (data.error || 'Unknown'));
-                            });
-                    }
-                })
-                .catch(() => {
-                    callServiceAPI({ action: 'toggle_visible', id: id })
-                        .then(data => { if (data.success) loadServicesList(); });
-                });
-        } else {
-            callServiceAPI({ action: 'toggle_visible', id: id })
-                .then(data => {
-                    if (data.success) loadServicesList();
-                    else alert('Failed: ' + (data.error || 'Unknown'));
-                })
-                .catch(err => alert('Error: ' + err.message));
-        }
-    } else {
-        callServiceAPI({ action: 'toggle_visible', id: id })
-            .then(data => {
-                if (data.success) loadServicesList();
-                else alert('Failed: ' + (data.error || 'Unknown'));
-            })
-            .catch(err => alert('Error: ' + err.message));
-    }
+function reorderServiceTo(id, toIndex) {
+    callServiceAPI({ action: 'reorder_service', id: id, toIndex: toIndex })
+        .then(data => {
+            if (data.success) {
+                loadServicesList();
+            } else {
+                alert('Failed to reorder: ' + (data.error || 'Unknown'));
+            }
+        })
+        .catch(err => {
+            alert('Error reordering: ' + err.message);
+        });
+}
+
+function toggleServiceVisibility(id) {
+    // Show/hide only — this never stops or starts the underlying service.
+    callServiceAPI({ action: 'toggle_visible', id: id })
+        .then(data => {
+            if (!data.success) alert('Failed to update visibility: ' + (data.error || 'Unknown'));
+            loadServicesList();
+        })
+        .catch(err => {
+            alert('Error updating visibility: ' + err.message);
+            loadServicesList();
+        });
 }
 
 // ==================== Add/Edit Service ====================
@@ -428,7 +518,14 @@ function editService(id) {
 }
 
 function deleteService(id) {
-    if (!confirm('Are you sure you want to delete this service? This will stop the service and remove all files.')) {
+    if (DISABLED_DELETE_IDS.indexOf(id) !== -1) return; // belt & braces: infra rows have disabled buttons
+    const svc = currentServices.find(s => s.id === id);
+    const name = svc ? svc.name : id;
+    const isCompose = !!(svc && svc.type === 'docker-compose');
+    const msg = isCompose
+        ? `Delete "${name}"?\n\nThis stops the stack and removes its files from the server.`
+        : `Remove "${name}" from the dashboard?`;
+    if (!confirm(msg)) {
         return;
     }
     
@@ -495,15 +592,18 @@ function renderModalButtons(service, isRunning) {
     const container = document.getElementById('modalButtons');
     container.innerHTML = '';
     if (isRunning) {
-        const stopBtn = document.createElement('button');
-        stopBtn.className = 'btn-stop';
-        stopBtn.innerHTML = '<i class="fas fa-stop"></i> Stop';
-        stopBtn.onclick = () => performAction(service, 'stop');
+        // Tomcat can never be stopped from the dashboard (the server also rejects it).
+        if (service !== 'tomcat-service') {
+            const stopBtn = document.createElement('button');
+            stopBtn.className = 'btn-stop';
+            stopBtn.innerHTML = '<i class="fas fa-stop"></i> Stop';
+            stopBtn.onclick = () => performAction(service, 'stop');
+            container.appendChild(stopBtn);
+        }
         const restartBtn = document.createElement('button');
         restartBtn.className = 'btn-restart';
         restartBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Restart';
         restartBtn.onclick = () => performAction(service, 'restart');
-        container.appendChild(stopBtn);
         container.appendChild(restartBtn);
     } else {
         const startBtn = document.createElement('button');
@@ -618,9 +718,19 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Sanitizes HTML that came from the (editable) service config before insertion.
+function sanitizeHtml(text) {
+    if (typeof DOMPurify !== 'undefined' && text != null) {
+        return DOMPurify.sanitize(String(text));
+    }
+    return escapeHtml(text);
+}
+
 function resolveOpenUrl(url) {
     if (!url) return '#';
     if (/^https?:\/\//i.test(url)) return url;
+    // Block every non-http(s) scheme (javascript:, data:, vbscript:, ...).
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url)) return '#';
     if (url.startsWith('/')) return url;
     if (url === '' || url === '.') return '/';
     return '/' + url;
@@ -664,12 +774,12 @@ function loadAndRenderServices() {
 
                 const footerHtml = (canManage || hasOpen)
                     ? `<div class="card-footer-right">
-                        <div class="card-footer-links">${hasOpen ? `<a href="${openHref}" target="_blank" class="card-link-sm"><i class="fas fa-external-link-alt"></i> ${escapeHtml(openText)}</a>` : ''}</div>
-                        ${canManage ? `<a href="#" class="manage-btn" data-service="${svc.id}"><i class="fas fa-cog"></i> Manage</a>` : ''}
+                        <div class="card-footer-links">${hasOpen ? `<a href="${escapeHtml(openHref)}" target="_blank" rel="noopener noreferrer" class="card-link-sm"><i class="fas fa-external-link-alt"></i> ${escapeHtml(openText)}</a>` : ''}</div>
+                        ${canManage ? `<a href="#" class="manage-btn" data-service="${escapeHtml(svc.id)}"><i class="fas fa-cog"></i> Manage</a>` : ''}
                        </div>`
                     : '';
 
-                card.innerHTML = `
+                card.innerHTML = sanitizeHtml(`
                     <div class="card">
                         <div class="card-header">
                             <h3 class="card-title"><i class="${escapeHtml(svc.icon || 'fas fa-cube')}"></i> ${escapeHtml(svc.name)}</h3>
@@ -679,7 +789,7 @@ function loadAndRenderServices() {
                         </div>
                         ${footerHtml}
                     </div>
-                `;
+                `);
                 container.appendChild(card);
             });
 
