@@ -136,10 +136,14 @@ function renderServicesList(services) {
 
     services.forEach((svc, index) => {
         const isInfraDelete = DISABLED_DELETE_IDS.indexOf(svc.id) !== -1;
+        const isStatusType = svc.type === 'systemctl' || svc.type === 'docker-compose';
         const item = document.createElement('div');
         item.className = 'service-list-item';
         item.draggable = true;
         item.dataset.id = svc.id;
+        const badgeHtml = isStatusType
+            ? ` <span class="svc-status-badge" data-svc="${escapeHtml(svc.id)}" id="svc-status-${escapeHtml(svc.id)}">…</span>`
+            : '';
         item.innerHTML = `
             <div class="service-list-reorder">
                 <button class="reorder-btn btn-move-up" data-id="${escapeHtml(svc.id)}" title="Move up" ${index === 0 ? 'disabled' : ''}><i class="fas fa-chevron-up"></i></button>
@@ -148,11 +152,10 @@ function renderServicesList(services) {
             <div class="service-list-info">
                 <div class="service-list-icon"><i class="${escapeHtml(svc.icon || 'fas fa-cube')}"></i></div>
                 <div class="service-list-details">
-                    <h4>${escapeHtml(svc.name)} <span class="svc-status-badge" data-svc="${escapeHtml(svc.id)}" id="svc-status-${escapeHtml(svc.id)}">…</span></h4>
+                    <h4>${escapeHtml(svc.name)}${badgeHtml} <span class="svc-actions" id="svc-actions-${escapeHtml(svc.id)}" data-id="${escapeHtml(svc.id)}"></span></h4>
                     <p>${escapeHtml(svc.type)} ${svc.manageable ? '• Manageable' : ''}</p>
                 </div>
             </div>
-            <div class="svc-actions" id="svc-actions-${escapeHtml(svc.id)}" data-id="${escapeHtml(svc.id)}"></div>
             <div class="service-list-actions">
                 <label class="toggle-switch" title="${svc.visible ? 'Hide from main page (service keeps running)' : 'Show on main page (service keeps running)'}">
                     <input type="checkbox" class="visibility-toggle" data-id="${escapeHtml(svc.id)}" data-visible="${svc.visible}" ${svc.visible ? 'checked' : ''}>
@@ -255,13 +258,8 @@ function renderServicesList(services) {
         reorderServiceTo(movedId, toIndex);
     });
 
-    // Non-manageable rows show a placeholder; fetch the rest in one batch call.
-    services.forEach(svc => {
-        if (!svc.manageable) {
-            const badge = document.getElementById('svc-status-' + svc.id);
-            if (badge) badge.textContent = '—';
-        }
-    });
+    // Fetch statuses in one batch call; status badges exist only for
+    // systemctl / docker-compose rows (never shown as "—" for static).
     fetchAllStatuses();
 }
 
