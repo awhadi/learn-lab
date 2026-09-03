@@ -5,7 +5,7 @@
       "name": "Pega Infinity",
       "icon": "fas fa-cogs",
       "type": "static",
-      "description": "<p>Core Pega Platform - build and run business applications. Access via Basic Auth, SSO (Keycloak), or LDAP.</p><ul><li><strong>Basic Auth:</strong> <a href=\"https://pega.awhadi.online/prweb/PRAuth\" target=\"_blank\">https://pega.awhadi.online/prweb/PRAuth</a></li><li><strong>SSO (Keycloak):</strong> <a href=\"https://pega.awhadi.online/prweb/PRAuth/keycloak\" target=\"_blank\">https://pega.awhadi.online/prweb/PRAuth/keycloak</a></li><li><strong>LDAP:</strong> <a href=\"https://pega.awhadi.online/prweb/PRWebLDAP1\" target=\"_blank\">https://pega.awhadi.online/prweb/PRWebLDAP1</a></li></ul><p><strong>Credentials (demo):</strong> demoadmin1 / awhadi.online, demoadmin2 / awhadi.online</p><p><strong>LDAP user:</strong> testuser / awhadi.online</p>",
+      "description": "<p>Core Pega Platform - build and run business applications. Access via Basic Auth, SSO (Keycloak), or LDAP.</p><ul><li><strong>Basic Auth:</strong> <a href=\"https://pega.awhadi.online/prweb/PRAuth\" target=\"_blank\">https://pega.awhadi.online/prweb/PRAuth</a></li><li><strong>SSO (Keycloak):</strong> <a href=\"https://pega.awhadi.online/prweb/PRAuth/keycloak\" target=\"_blank\">https://pega.awhadi.online/prweb/PRAuth/keycloak</a></li><li><strong>LDAP:</strong> <a href=\"https://pega.awhadi.online/prweb/PRWebLDAP1\" target=\"_blank\">https://pega.awhadi.online/prweb/PRWebLDAP1</a></li></ul><p><strong>Demo users:</strong> demoadmin1, demoadmin2, testuser (LDAP)</p><p><em>Passwords: shared by the lab administrator.</em></p>",
       "visible": true,
       "manageable": false,
       "actions": [],
@@ -36,7 +36,7 @@
       "icon": "fas fa-database",
       "type": "docker-compose",
       "composePath": "/srv/docker-compose/pgadmin4",
-      "description": "<p>PostgreSQL database management via pgAdmin 4. Use to inspect Pega rules and data tables.</p><p><strong>Access:</strong> <a href=\"/pgadmin4\" target=\"_blank\">/pgadmin4</a></p><p><strong>Login:</strong> admin@awhadi.online / awhadi.online</p>",
+      "description": "<p>PostgreSQL database management via pgAdmin 4. Use to inspect Pega rules and data tables.</p><p><strong>Access:</strong> <a href=\"/pgadmin4\" target=\"_blank\">/pgadmin4</a></p><p><strong>Login:</strong> admin@awhadi.online</p><p><em>Password: ask the lab administrator.</em></p>",
       "links": [
         {
           "text": "Open Database",

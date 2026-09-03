@@ -22,6 +22,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" href="/favicon.ico?" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/dist/purify.min.js"></script>
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -212,9 +213,9 @@
     </main>
 
     <script>
+        // No client-side secret: the lab control API is open by design (see service_api.jsp).
         window.SERVICES_CONFIG = {
-            baseUrl: '<%= baseUrl %>',
-            token: 'K9mX2pR7vL5nB8wD4jH6fT3cY1aG0sE9qW2'
+            baseUrl: '<%= baseUrl %>'
         };
     </script>
     <script src="/js/script.js"></script>

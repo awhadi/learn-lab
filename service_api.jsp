@@ -1,6 +1,8 @@
-<%@ page import="java.io.*, java.nio.charset.StandardCharsets, java.nio.file.*, java.util.*" %>
+<%@ page import="java.io.*, java.nio.charset.StandardCharsets, java.nio.file.*, java.util.*, java.util.concurrent.*" %>
 <%@ page contentType="application/json; charset=UTF-8" %><%!
-    final String SECRET_TOKEN = "K9mX2pR7vL5nB8wD4jH6fT3cY1aG0sE9qW2";
+    // Serializes config read-modify-write cycles across concurrent requests.
+    static final Object CONFIG_LOCK = new Object();
+    static final int MAX_LOG_LINES = 2000;
 
     private String readConfigFile(String path) {
         try {
@@ -11,7 +13,62 @@
     }
 
     private void writeConfigFile(String path, String content) throws Exception {
-        Files.write(Paths.get(path), content.getBytes(StandardCharsets.UTF_8));
+        // Atomic write: never leave a half-written config behind.
+        Path target = Paths.get(path);
+        Path tmp = target.resolveSibling(target.getFileName().toString() + ".tmp");
+        Files.write(tmp, content.getBytes(StandardCharsets.UTF_8));
+        try {
+            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException amnse) {
+            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    // Canonicalize a filesystem path, resolving symlinks when possible.
+    private String normalizePath(String p) {
+        if (p == null) return "";
+        try { return Paths.get(p).toRealPath().toString(); }
+        catch (Exception e) { try { return Paths.get(p).toAbsolutePath().normalize().toString(); } catch (Exception e2) { return p; } }
+    }
+
+    private boolean isWithinBase(String path, String base) {
+        if (path == null || base == null || base.isEmpty()) return false;
+        String p = normalizePath(path);
+        String b = normalizePath(base);
+        if (!p.startsWith(b)) return false;
+        return p.length() == b.length() || p.charAt(b.length()) == '/';
+    }
+
+    // Runs a command with a hard timeout and bounded output capture.
+    private String runProcess(ProcessBuilder pb, long timeoutSeconds, int maxOutputLines) throws Exception {
+        Process proc = pb.start();
+        StringBuilder output = new StringBuilder();
+        int read = 0;
+        long deadline = System.currentTimeMillis() + timeoutSeconds * 1000L;
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8))) {
+            while (System.currentTimeMillis() < deadline) {
+                if (proc.waitFor(200, TimeUnit.MILLISECONDS)) break;
+                while (read < maxOutputLines && reader.ready()) {
+                    String ln = reader.readLine();
+                    if (ln == null) break;
+                    output.append(ln).append("\n");
+                    read++;
+                }
+            }
+            boolean timedOut = proc.isAlive();
+            if (timedOut) {
+                proc.destroyForcibly();
+                proc.waitFor();
+                if (read < maxOutputLines) output.append("(command timed out after ").append(timeoutSeconds).append("s)\n");
+            }
+            while (read < maxOutputLines) {
+                String ln = reader.readLine();
+                if (ln == null) break;
+                output.append(ln).append("\n");
+                read++;
+            }
+        }
+        return output.toString();
     }
 
     private String escapeJsonStr(String s) {
@@ -220,17 +277,24 @@
         return result;
     }
 %><%
-    String token = request.getParameter("token");
-    if (token == null || !token.equals(SECRET_TOKEN)) {
-        out.print("{\"success\":false,\"error\":\"Invalid or missing security token\"}");
-        return;
-    }
-
+    // NOTE: Open by design (self-hosted learning lab). No secret is checked here;
+    // if this dashboard is ever exposed beyond the lab, protect /service_api.jsp at
+    // the reverse proxy or add real authentication before enabling control actions.
     String configPath = application.getRealPath("/WEB-INF/services.json");
     String service = request.getParameter("service");
     String action = request.getParameter("action");
     String linesParam = request.getParameter("lines");
-    int lines = (linesParam != null && !linesParam.isEmpty()) ? Integer.parseInt(linesParam) : 100;
+    int lines = 100;
+    if (linesParam != null && !linesParam.isEmpty()) {
+        try {
+            lines = Integer.parseInt(linesParam);
+        } catch (NumberFormatException nfe) {
+            out.print("{\"success\":false,\"error\":\"Invalid 'lines' parameter\"}");
+            return;
+        }
+        if (lines < 1) lines = 1;
+        if (lines > MAX_LOG_LINES) lines = MAX_LOG_LINES;
+    }
 
     if (action != null && (action.equals("list_services") || action.equals("add_service") ||
         action.equals("update_service") || action.equals("delete_service") || action.equals("toggle_visible") ||
@@ -259,6 +323,8 @@
                     return;
                 }
 
+                synchronized (CONFIG_LOCK) {
+                jsonConfig = readConfigFile(configPath);
                 String id = makeId(name.trim());
                 String finalComposePath = "";
 
@@ -266,8 +332,7 @@
                     if (composeContent != null && !composeContent.trim().isEmpty()) {
                         String basePath = "/srv/docker-compose";
                         try {
-                            String settingsConfig = readConfigFile(configPath);
-                            String bp = extractJsonField(settingsConfig, "composeBasePath");
+                            String bp = extractJsonField(jsonConfig, "composeBasePath");
                             if (bp != null && !bp.isEmpty()) basePath = bp;
                         } catch (Exception e) {}
 
@@ -285,6 +350,15 @@
 
                     } else if (composePathParam != null && !composePathParam.trim().isEmpty()) {
                         finalComposePath = composePathParam.trim();
+                        String basePath = "/srv/docker-compose";
+                        try {
+                            String bp = extractJsonField(jsonConfig, "composeBasePath");
+                            if (bp != null && !bp.isEmpty()) basePath = bp;
+                        } catch (Exception e) {}
+                        if (!isWithinBase(finalComposePath, basePath)) {
+                            out.print("{\"success\":false,\"error\":\"Compose path must be inside " + escapeJsonStr(basePath) + "\"}");
+                            return;
+                        }
                         Path composeFile = Paths.get(finalComposePath, "docker-compose.yml");
                         if (!Files.exists(composeFile)) {
                             composeFile = Paths.get(finalComposePath, "docker-compose.yaml");
@@ -352,6 +426,7 @@
                 writeConfigFile(configPath, newCfg);
                 out.print("{\"success\":true,\"id\":\"" + id + "\",\"message\":\"Service added successfully\"}");
                 return;
+                }
             }
 
             if ("update_service".equals(action)) {
@@ -367,6 +442,8 @@
                     return;
                 }
 
+                synchronized (CONFIG_LOCK) {
+                jsonConfig = readConfigFile(configPath);
                 int objStart = findServiceObjStart(jsonConfig, id);
                 if (objStart == -1) {
                     out.print("{\"success\":false,\"error\":\"Service not found\"}");
@@ -403,6 +480,7 @@
 
                 out.print("{\"success\":true,\"message\":\"Service updated successfully\"}");
                 return;
+                }
             }
 
             if ("delete_service".equals(action)) {
@@ -413,6 +491,8 @@
                     return;
                 }
 
+                synchronized (CONFIG_LOCK) {
+                jsonConfig = readConfigFile(configPath);
                 int objStart = findServiceObjStart(jsonConfig, id);
                 if (objStart == -1) {
                     out.print("{\"success\":false,\"error\":\"Service not found\"}");
@@ -426,16 +506,23 @@
                 if (typeCheck.contains("\"type\":\"docker-compose\"")) {
                     String composeP = extractJsonField(serviceBlock, "composePath");
                     if (composeP != null && !composeP.isEmpty()) {
+                        String baseP = extractJsonField(jsonConfig, "composeBasePath");
+                        if (baseP == null || baseP.isEmpty()) baseP = "/srv/docker-compose";
+                        if (!isWithinBase(composeP, baseP)) {
+                            out.print("{\"success\":false,\"error\":\"Refusing delete: compose path is outside the allowed base directory\"}");
+                            return;
+                        }
                         try {
                             ProcessBuilder pb = new ProcessBuilder("sudo", "/opt/tomcat/webapps/ROOT/service_control.sh",
                                 "docker-compose", id, "stop", "100", composeP);
                             pb.redirectErrorStream(true);
-                            Process proc = pb.start();
-                            proc.waitFor();
-                        } catch (Exception e) {}
+                            runProcess(pb, 30, 200);
+                        } catch (Exception e) { /* ignore: config entry removal continues */ }
                         try {
-                            Runtime.getRuntime().exec(new String[]{"sudo", "rm", "-rf", composeP}).waitFor();
-                        } catch (Exception e) {}
+                            ProcessBuilder pb2 = new ProcessBuilder("sudo", "rm", "-rf", composeP);
+                            pb2.redirectErrorStream(true);
+                            runProcess(pb2, 60, 100);
+                        } catch (Exception e) { /* ignore */ }
                     }
                 }
 
@@ -451,6 +538,7 @@
                 writeConfigFile(configPath, before + after);
                 out.print("{\"success\":true,\"message\":\"Service deleted successfully\"}");
                 return;
+                }
             }
 
             if ("toggle_visible".equals(action)) {
@@ -461,6 +549,8 @@
                     return;
                 }
 
+                synchronized (CONFIG_LOCK) {
+                jsonConfig = readConfigFile(configPath);
                 int objStart = findServiceObjStart(jsonConfig, id);
                 if (objStart == -1) {
                     out.print("{\"success\":false,\"error\":\"Service not found\"}");
@@ -481,17 +571,21 @@
 
                 out.print("{\"success\":true,\"message\":\"Visibility toggled\"}");
                 return;
+                }
             }
 
             if ("reorder_service".equals(action)) {
                 String id = request.getParameter("id");
                 String dir = request.getParameter("dir");
+                String toIndexParam = request.getParameter("toIndex");
 
-                if (id == null || id.trim().isEmpty() || dir == null) {
-                    out.print("{\"success\":false,\"error\":\"Missing id or dir\"}");
+                if (id == null || id.trim().isEmpty() || (dir == null && toIndexParam == null)) {
+                    out.print("{\"success\":false,\"error\":\"Missing id, dir or toIndex\"}");
                     return;
                 }
 
+                synchronized (CONFIG_LOCK) {
+                jsonConfig = readConfigFile(configPath);
                 int arrStart = findArrayStart(jsonConfig);
                 int arrEnd = findArrayEnd(jsonConfig, arrStart);
                 if (arrStart == -1 || arrEnd == -1) {
@@ -517,19 +611,35 @@
                     return;
                 }
 
-                int toIdx = "up".equals(dir) ? fromIdx - 1 : fromIdx + 1;
-                if ("up".equals(dir) && fromIdx == 0) {
-                    out.print("{\"success\":true,\"message\":\"Already at top\"}");
-                    return;
-                }
-                if ("down".equals(dir) && fromIdx >= items.length - 1) {
-                    out.print("{\"success\":true,\"message\":\"Already at bottom\"}");
-                    return;
+                int toIdx;
+                if (toIndexParam != null) {
+                    try {
+                        toIdx = Integer.parseInt(toIndexParam.trim());
+                    } catch (NumberFormatException nfe) {
+                        out.print("{\"success\":false,\"error\":\"Invalid toIndex\"}");
+                        return;
+                    }
+                    if (toIdx < 0) toIdx = 0;
+                    else if (toIdx >= items.length) toIdx = items.length - 1;
+                } else {
+                    if ("up".equals(dir) && fromIdx == 0) {
+                        out.print("{\"success\":true,\"message\":\"Already at top\"}");
+                        return;
+                    }
+                    if ("down".equals(dir) && fromIdx >= items.length - 1) {
+                        out.print("{\"success\":true,\"message\":\"Already at bottom\"}");
+                        return;
+                    }
+                    toIdx = "up".equals(dir) ? fromIdx - 1 : fromIdx + 1;
                 }
 
-                String tmp = items[fromIdx];
-                items[fromIdx] = items[toIdx];
-                items[toIdx] = tmp;
+                if (toIdx != fromIdx) {
+                    // Move semantics: remove the item, then insert it at toIdx.
+                    String moved = items[fromIdx];
+                    for (int i = fromIdx; i < items.length - 1; i++) items[i] = items[i + 1];
+                    for (int i = items.length - 1; i > toIdx; i--) items[i] = items[i - 1];
+                    items[toIdx] = moved;
+                }
 
                 StringBuilder sb = new StringBuilder(jsonConfig.substring(0, arrStart + 1));
                 sb.append("\n");
@@ -544,52 +654,68 @@
                 writeConfigFile(configPath, sb.toString());
                 out.print("{\"success\":true,\"message\":\"Service reordered\"}");
                 return;
+                }
             }
 
             if ("batch_status".equals(action)) {
+                int bsArrStart = findArrayStart(jsonConfig);
+                String[] items2 = splitTopLevel(jsonConfig, bsArrStart, findArrayEnd(jsonConfig, bsArrStart));
+                // Collect statuses concurrently; each probe is bounded by runProcess().
+                java.util.Map<String, String> results = new java.util.HashMap<String, String>();
+                if (items2 != null && items2.length > 0) {
+                    int poolSize = Math.min(items2.length, 8);
+                    ExecutorService pool = Executors.newFixedThreadPool(poolSize);
+                    java.util.List<Callable<Void>> probes = new java.util.ArrayList<Callable<Void>>();
+                    for (final String item : items2) {
+                        probes.add(new Callable<Void>() {
+                            public Void call() {
+                                String sId = extractIdSpaced(item);
+                                if (sId.isEmpty()) return null;
+                                String sType = extractJsonField(item, "type");
+                                String sService = extractJsonField(item, "service");
+                                String sCompPath = extractJsonField(item, "composePath");
+                                String status = "static";
+                                if ("systemctl".equals(sType) && sService != null) {
+                                    try {
+                                        ProcessBuilder pb = new ProcessBuilder("systemctl", "is-active", sService);
+                                        pb.redirectErrorStream(true);
+                                        String result = runProcess(pb, 10, 20).trim();
+                                        if (result.equals("active")) status = "running";
+                                        else if (result.equals("inactive") || result.equals("dead")) status = "stopped";
+                                        else status = "unknown";
+                                    } catch (Exception ex) { status = "unknown"; }
+                                } else if ("docker-compose".equals(sType) && sCompPath != null) {
+                                    try {
+                                        ProcessBuilder pb = new ProcessBuilder("docker", "compose", "ps", "--format", "json");
+                                        pb.directory(new java.io.File(sCompPath));
+                                        pb.redirectErrorStream(true);
+                                        String result = runProcess(pb, 10, 200).trim();
+                                        if (!result.isEmpty() && result.contains("\"State\":\"running\"")) status = "running";
+                                        else if (result.isEmpty()) status = "stopped";
+                                        else status = "unknown";
+                                    } catch (Exception ex) { status = "unknown"; }
+                                }
+                                synchronized (results) { results.put(sId, status); }
+                                return null;
+                            }
+                        });
+                    }
+                    try {
+                        pool.invokeAll(probes);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        pool.shutdown();
+                    }
+                }
                 StringBuilder sb = new StringBuilder("{\"success\":true,\"statuses\":{");
-                String[] items2 = splitTopLevel(jsonConfig, findArrayStart(jsonConfig), findArrayEnd(jsonConfig, findArrayStart(jsonConfig)));
                 boolean first = true;
                 if (items2 != null) {
                     for (String item : items2) {
                         String sId = extractIdSpaced(item);
                         if (sId.isEmpty()) continue;
-                        String sType = extractJsonField(item, "type");
-                        String sService = extractJsonField(item, "service");
-                        String sCompPath = extractJsonField(item, "composePath");
-                        String status = "static";
-                        if ("systemctl".equals(sType) && sService != null) {
-                            try {
-                                ProcessBuilder pb = new ProcessBuilder("systemctl", "is-active", sService);
-                                pb.redirectErrorStream(true);
-                                Process p = pb.start();
-                                BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8));
-                                StringBuilder sb2 = new StringBuilder();
-                                String ln;
-                                while ((ln = r.readLine()) != null) sb2.append(ln);
-                                p.waitFor();
-                                String result = sb2.toString().trim();
-                                if (result.equals("active")) status = "running";
-                                else if (result.equals("inactive") || result.equals("dead")) status = "stopped";
-                                else status = "unknown";
-                            } catch (Exception ex) { status = "unknown"; }
-                        } else if ("docker-compose".equals(sType) && sCompPath != null) {
-                            try {
-                                ProcessBuilder pb = new ProcessBuilder("docker", "compose", "ps", "--format", "json");
-                                pb.directory(new java.io.File(sCompPath));
-                                pb.redirectErrorStream(true);
-                                Process p = pb.start();
-                                BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8));
-                                StringBuilder sb2 = new StringBuilder();
-                                String ln;
-                                while ((ln = r.readLine()) != null) sb2.append(ln);
-                                p.waitFor();
-                                String result = sb2.toString().trim();
-                                if (!result.isEmpty() && result.contains("\"State\":\"running\"")) status = "running";
-                                else if (result.isEmpty()) status = "stopped";
-                                else status = "unknown";
-                            } catch (Exception ex) { status = "unknown"; }
-                        }
+                        String status = results.get(sId);
+                        if (status == null) continue;
                         if (!first) sb.append(",");
                         first = false;
                         sb.append("\"").append(escapeJsonStr(sId)).append("\":\"").append(status).append("\"");
@@ -601,7 +727,9 @@
             }
 
         } catch (Exception e) {
-            out.print("{\"success\":false,\"error\":\"" + escapeJsonStr(e.getMessage()) + "\"}");
+            // Log details server-side; never echo internals to the client.
+            e.printStackTrace();
+            out.print("{\"success\":false,\"error\":\"An unexpected error occurred\"}");
             return;
         }
     }
@@ -624,6 +752,12 @@
     String serviceType = extractJsonField(svcBlock, "type");
     String systemctlService = extractJsonField(svcBlock, "service");
     String svcComposePath = extractJsonField(svcBlock, "composePath");
+
+    // Tomcat must never be stopped from the dashboard (mirrored in service_control.sh).
+    if ("stop".equals(action) && "systemctl".equals(serviceType) && "tomcat".equals(systemctlService)) {
+        out.print("{\"success\":false,\"error\":\"Tomcat cannot be stopped\"}");
+        return;
+    }
 
     String[] allowedActions = {"status", "start", "stop", "restart", "logs"};
     boolean actionAllowed = false;
@@ -648,6 +782,12 @@
                 out.print("{\"success\":false,\"error\":\"No compose path configured\"}");
                 return;
             }
+            String baseP = extractJsonField(svcConfig, "composeBasePath");
+            if (baseP == null || baseP.isEmpty()) baseP = "/srv/docker-compose";
+            if (!isWithinBase(svcComposePath, baseP)) {
+                out.print("{\"success\":false,\"error\":\"Compose path is outside the allowed base directory\"}");
+                return;
+            }
             cmd = new String[]{"sudo", "/opt/tomcat/webapps/ROOT/service_control.sh",
                 "docker-compose", service, action, String.valueOf(lines), svcComposePath};
         } else {
@@ -655,17 +795,11 @@
             return;
         }
 
+        long timeoutSec = "logs".equals(action) ? 20 : ("status".equals(action) ? 10 : 60);
+        int outCap = "logs".equals(action) ? (lines + 200) : 400;
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
-        Process proc = pb.start();
-        BufferedReader reader = new BufferedReader(new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8));
-        StringBuilder output = new StringBuilder();
-        String line;
-        while ((line = reader.readLine()) != null) {
-            output.append(line).append("\n");
-        }
-        proc.waitFor();
-        String result = output.toString().trim();
+        String result = runProcess(pb, timeoutSec, outCap).trim();
 
         if ("status".equals(action)) {
             String status = "unknown";
@@ -682,6 +816,7 @@
             out.print("{\"success\":true,\"message\":\"Action " + action + " completed\"}");
         }
     } catch (Exception e) {
-        out.print("{\"success\":false,\"error\":\"" + escapeJsonStr(e.getMessage()) + "\"}");
+        e.printStackTrace();
+        out.print("{\"success\":false,\"error\":\"An unexpected error occurred\"}");
     }
 %>
