@@ -779,17 +779,19 @@ function loadAndRenderServices() {
                        </div>`
                     : '';
 
-                card.innerHTML = sanitizeHtml(`
+                // Sanitize only the config-owned description; the card skeleton below is trusted markup.
+                const safeDescription = sanitizeHtml(svc.description || '');
+                card.innerHTML = `
                     <div class="card">
                         <div class="card-header">
                             <h3 class="card-title"><i class="${escapeHtml(svc.icon || 'fas fa-cube')}"></i> ${escapeHtml(svc.name)}</h3>
                         </div>
                         <div class="card-body">
-                            <div class="card-service-info">${svc.description || ''}</div>
+                            <div class="card-service-info">${safeDescription}</div>
                         </div>
                         ${footerHtml}
                     </div>
-                `);
+                `;
                 container.appendChild(card);
             });
 
