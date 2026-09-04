@@ -71,6 +71,40 @@
         return output.toString();
     }
 
+    // Docker Compose status, tolerant of missing directories and legacy
+    // `docker-compose` (v1) installations.
+    private String composeStatus(String dir) {
+        if (dir == null || dir.isEmpty()) return "stopped";
+        java.io.File d = new java.io.File(dir);
+        if (!d.isDirectory()) return "stopped";
+        try {
+            ProcessBuilder pb = new ProcessBuilder("docker", "compose", "ps", "--format", "json");
+            pb.directory(d);
+            pb.redirectErrorStream(true);
+            String out = runProcess(pb, 10, 300).trim();
+            String low = out.toLowerCase();
+            boolean cmdMissing = low.contains("unknown docker command")
+                || low.contains("not a docker command") || low.contains("not found")
+                || low.contains("no such file");
+            if (cmdMissing) {
+                ProcessBuilder pb2 = new ProcessBuilder("docker-compose", "ps");
+                pb2.directory(d);
+                pb2.redirectErrorStream(true);
+                out = runProcess(pb2, 10, 300).trim();
+                low = out.toLowerCase();
+            }
+            if (out.contains("\"State\":\"running\"")) return "running";
+            if (low.contains("cannot connect") || low.contains("permission denied")
+                || low.contains("error while") || low.contains("an error occurred")) return "unknown";
+            if (out.trim().isEmpty() || out.trim().equals("[]")) return "stopped";
+            // Legacy `docker-compose ps` prints header lines; a live container shows "Up ...".
+            if (low.contains("up ") || low.contains("running")) return "running";
+            return "stopped";
+        } catch (Exception ex) {
+            return "unknown";
+        }
+    }
+
     private String escapeJsonStr(String s) {
         if (s == null) return "";
         StringBuilder sb = new StringBuilder();
@@ -702,15 +736,7 @@
                                         else status = "unknown";
                                     } catch (Exception ex) { status = "unknown"; }
                                 } else if ("docker-compose".equals(sType) && sCompPath != null) {
-                                    try {
-                                        ProcessBuilder pb = new ProcessBuilder("docker", "compose", "ps", "--format", "json");
-                                        pb.directory(new java.io.File(sCompPath));
-                                        pb.redirectErrorStream(true);
-                                        String result = runProcess(pb, 10, 200).trim();
-                                        if (!result.isEmpty() && result.contains("\"State\":\"running\"")) status = "running";
-                                        else if (result.isEmpty()) status = "stopped";
-                                        else status = "unknown";
-                                    } catch (Exception ex) { status = "unknown"; }
+                                    status = composeStatus(sCompPath);
                                 }
                                 synchronized (results) { results.put(sId, status); }
                                 return null;
