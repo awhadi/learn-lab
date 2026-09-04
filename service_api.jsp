@@ -71,57 +71,39 @@
         return output.toString();
     }
 
-    // Docker Compose status. Tolerates missing directories, legacy
-    // `docker-compose` (v1) and — most importantly — Tomcat lacking direct
-    // Docker socket access: on the lab server the probe falls back to the
-    // same sudo service_control.sh path the actions use (NOPASSWD sudoers).
-    private String composeStatus(String dir) {
-        if (dir == null || dir.isEmpty()) return "stopped";
-        java.io.File d = new java.io.File(dir);
-        if (!d.isDirectory()) return "stopped";
+    // Single shared status probe used by BOTH the Manage modal (per-service
+    // action) and Settings batch_status, so they always agree. It runs the
+    // exact same sudo service_control.sh wrapper as start/stop/restart/logs
+    // (which already has passwordless sudo on the lab), with a bounded
+    // subprocess and a small output cap.
+    private String probeStatus(String type, String serviceId, String systemctlService, String composePath) {
         try {
-            ProcessBuilder pb = new ProcessBuilder("docker", "compose", "ps", "--format", "json");
-            pb.directory(d);
-            pb.redirectErrorStream(true);
-            String out = runProcess(pb, 10, 300).trim();
-            String low = out.toLowerCase();
-            boolean cmdMissing = low.contains("unknown docker command")
-                || low.contains("not a docker command") || low.contains("not found")
-                || low.contains("no such file");
-            if (cmdMissing) {
-                ProcessBuilder pb2 = new ProcessBuilder("docker-compose", "ps");
-                pb2.directory(d);
-                pb2.redirectErrorStream(true);
-                out = runProcess(pb2, 10, 300).trim();
-                low = out.toLowerCase();
+            if ("systemctl".equals(type)) {
+                if (systemctlService == null || systemctlService.isEmpty()) return "unknown";
+                ProcessBuilder pb = new ProcessBuilder("sudo",
+                    "/opt/tomcat/webapps/ROOT/service_control.sh",
+                    "systemctl", systemctlService, "status", "100");
+                pb.redirectErrorStream(true);
+                String out = runProcess(pb, 10, 200).trim();
+                if (out.equals("active") || out.equals("running")) return "running";
+                if (out.equals("inactive") || out.equals("dead") || out.equals("stopped") || out.isEmpty()) return "stopped";
+                return "unknown";
             }
-            if (out.contains("\"State\":\"running\"")) return "running";
-            // Direct Docker access failed (daemon/socket permissions): retry via sudo.
-            if (low.contains("permission denied") || low.contains("cannot connect")
-                || low.contains("error response from daemon") || low.contains("while trying to connect")
-                || low.contains("operation not permitted") || low.contains("command timed out")) {
-                return composeStatusSudo(d);
+            if ("docker-compose".equals(type)) {
+                if (composePath == null || composePath.isEmpty()) return "stopped";
+                // Cheap guard: nothing can be running from a directory that is absent.
+                java.io.File d = new java.io.File(composePath);
+                if (!d.isDirectory()) return "stopped";
+                ProcessBuilder pb = new ProcessBuilder("sudo",
+                    "/opt/tomcat/webapps/ROOT/service_control.sh",
+                    "docker-compose", (serviceId != null ? serviceId : "compose"), "status", "100", composePath);
+                pb.redirectErrorStream(true);
+                String out = runProcess(pb, 10, 200).trim();
+                if (out.equals("running")) return "running";
+                if (out.equals("stopped") || out.isEmpty()) return "stopped";
+                return "unknown";
             }
-            if (out.trim().isEmpty() || out.trim().equals("[]")) return "stopped";
-            // Legacy `docker-compose ps` prints header lines; a live container shows "Up ...".
-            if (low.contains("up ") || low.contains("running")) return "running";
-            return "stopped";
-        } catch (Exception ex) {
-            return composeStatusSudo(d);
-        }
-    }
-
-    // Status via the sudo wrapper (root), mirroring how start/stop/restart run.
-    private String composeStatusSudo(java.io.File d) {
-        try {
-            ProcessBuilder pb = new ProcessBuilder("sudo",
-                "/opt/tomcat/webapps/ROOT/service_control.sh",
-                "docker-compose", "compose", "status", "100", d.getAbsolutePath());
-            pb.redirectErrorStream(true);
-            String out = runProcess(pb, 20, 300).trim();
-            if (out.equals("running")) return "running";
-            if (out.equals("stopped") || out.isEmpty()) return "stopped";
-            return "unknown";
+            return "static";
         } catch (Exception ex) {
             return "unknown";
         }
@@ -747,19 +729,7 @@
                                 String sType = extractJsonField(item, "type");
                                 String sService = extractJsonField(item, "service");
                                 String sCompPath = extractJsonField(item, "composePath");
-                                String status = "static";
-                                if ("systemctl".equals(sType) && sService != null) {
-                                    try {
-                                        ProcessBuilder pb = new ProcessBuilder("systemctl", "is-active", sService);
-                                        pb.redirectErrorStream(true);
-                                        String result = runProcess(pb, 10, 20).trim();
-                                        if (result.equals("active")) status = "running";
-                                        else if (result.equals("inactive") || result.equals("dead")) status = "stopped";
-                                        else status = "unknown";
-                                    } catch (Exception ex) { status = "unknown"; }
-                                } else if ("docker-compose".equals(sType) && sCompPath != null) {
-                                    status = composeStatus(sCompPath);
-                                }
+                                String status = probeStatus(sType, sId, sService, sCompPath);
                                 synchronized (results) { results.put(sId, status); }
                                 return null;
                             }
@@ -838,6 +808,13 @@
     }
 
     try {
+        // Status goes through the shared probe (same code as Settings batch_status).
+        if ("status".equals(action)) {
+            String st = probeStatus(serviceType, service, systemctlService, svcComposePath);
+            out.print("{\"success\":true,\"status\":\"" + st + "\"}");
+            return;
+        }
+
         String[] cmd;
         if ("systemctl".equals(serviceType)) {
             cmd = new String[]{"sudo", "/opt/tomcat/webapps/ROOT/service_control.sh",
@@ -866,14 +843,7 @@
         pb.redirectErrorStream(true);
         String result = runProcess(pb, timeoutSec, outCap).trim();
 
-        if ("status".equals(action)) {
-            String status = "unknown";
-            if (result.equals("active") || result.equals("running")) status = "running";
-            else if (result.equals("inactive") || result.equals("stopped")) status = "stopped";
-            else if (result.isEmpty()) status = "stopped";
-            out.print("{\"success\":true,\"status\":\"" + status + "\"}");
-        }
-        else if ("logs".equals(action)) {
+        if ("logs".equals(action)) {
             String escapedLogs = escapeJsonStr(result);
             out.print("{\"success\":true,\"logs\":\"" + escapedLogs + "\"}");
         }
