@@ -71,8 +71,10 @@
         return output.toString();
     }
 
-    // Docker Compose status, tolerant of missing directories and legacy
-    // `docker-compose` (v1) installations.
+    // Docker Compose status. Tolerates missing directories, legacy
+    // `docker-compose` (v1) and — most importantly — Tomcat lacking direct
+    // Docker socket access: on the lab server the probe falls back to the
+    // same sudo service_control.sh path the actions use (NOPASSWD sudoers).
     private String composeStatus(String dir) {
         if (dir == null || dir.isEmpty()) return "stopped";
         java.io.File d = new java.io.File(dir);
@@ -94,12 +96,32 @@
                 low = out.toLowerCase();
             }
             if (out.contains("\"State\":\"running\"")) return "running";
-            if (low.contains("cannot connect") || low.contains("permission denied")
-                || low.contains("error while") || low.contains("an error occurred")) return "unknown";
+            // Direct Docker access failed (daemon/socket permissions): retry via sudo.
+            if (low.contains("permission denied") || low.contains("cannot connect")
+                || low.contains("error response from daemon") || low.contains("while trying to connect")
+                || low.contains("operation not permitted") || low.contains("command timed out")) {
+                return composeStatusSudo(d);
+            }
             if (out.trim().isEmpty() || out.trim().equals("[]")) return "stopped";
             // Legacy `docker-compose ps` prints header lines; a live container shows "Up ...".
             if (low.contains("up ") || low.contains("running")) return "running";
             return "stopped";
+        } catch (Exception ex) {
+            return composeStatusSudo(d);
+        }
+    }
+
+    // Status via the sudo wrapper (root), mirroring how start/stop/restart run.
+    private String composeStatusSudo(java.io.File d) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder("sudo",
+                "/opt/tomcat/webapps/ROOT/service_control.sh",
+                "docker-compose", "compose", "status", "100", d.getAbsolutePath());
+            pb.redirectErrorStream(true);
+            String out = runProcess(pb, 20, 300).trim();
+            if (out.equals("running")) return "running";
+            if (out.equals("stopped") || out.isEmpty()) return "stopped";
+            return "unknown";
         } catch (Exception ex) {
             return "unknown";
         }
