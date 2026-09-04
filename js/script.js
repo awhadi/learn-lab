@@ -258,6 +258,67 @@ function renderServicesList(services) {
         reorderServiceTo(movedId, toIndex);
     });
 
+    // Touch drag & drop (mobile): reorder with a finger. A tap still scrolls the
+    // list; once the finger moves ~10px the list freezes and the row follows it.
+    let touchState = null;
+    const touchRowFrom = (t) => {
+        const el = (t.target && t.target.closest) ? t.target.closest('.service-list-item') : null;
+        return (el && container.contains(el)) ? el : null;
+    };
+    container.addEventListener('touchstart', function(e) {
+        const row = touchRowFrom(e);
+        if (!row || !e.touches || e.touches.length === 0) return;
+        touchState = {
+            row: row,
+            id: row.dataset.id || null,
+            fromIndex: Array.prototype.indexOf.call(container.children, row),
+            startY: e.touches[0].clientY,
+            active: false
+        };
+    }, { passive: true });
+    container.addEventListener('touchmove', function(e) {
+        if (!touchState || !touchState.id || !e.touches || e.touches.length === 0) return;
+        const y = e.touches[0].clientY;
+        if (!touchState.active) {
+            if (Math.abs(y - touchState.startY) < 10) return;
+            touchState.active = true;
+            touchState.row.classList.add('dragging');
+        }
+        e.preventDefault(); // freeze list scrolling while dragging
+        const rowsLive = Array.prototype.slice.call(container.children);
+        const row = touchState.row;
+        const cur = rowsLive.indexOf(row);
+        if (cur === -1) return;
+        let boundary = rowsLive.length;
+        for (let i = 0; i < rowsLive.length; i++) {
+            const r = rowsLive[i].getBoundingClientRect();
+            if (y < r.top + r.height / 2) { boundary = i; break; }
+        }
+        if (boundary === cur || boundary === cur + 1) return; // same slot
+        if (boundary > cur) {
+            container.insertBefore(row, boundary < rowsLive.length ? rowsLive[boundary] : null);
+        } else {
+            container.insertBefore(row, rowsLive[boundary]);
+        }
+    }, { passive: false });
+    container.addEventListener('touchend', function() {
+        if (!touchState) return;
+        const st = touchState;
+        touchState = null;
+        st.row.classList.remove('dragging');
+        if (!st.active || !st.id) return;
+        const finalIndex = Array.prototype.indexOf.call(container.children, st.row);
+        if (finalIndex !== -1 && finalIndex !== st.fromIndex) {
+            reorderServiceTo(st.id, finalIndex);
+        }
+    }, { passive: true });
+    container.addEventListener('touchcancel', function() {
+        if (touchState) {
+            touchState.row.classList.remove('dragging');
+            touchState = null;
+        }
+    }, { passive: true });
+
     // Fetch statuses in one batch call; status badges exist only for
     // systemctl / docker-compose rows (never shown as "—" for static).
     fetchAllStatuses();

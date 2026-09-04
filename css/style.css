@@ -1581,3 +1581,65 @@ input:checked + .toggle-slider:before {
     width: 100%;
     box-sizing: border-box;
 }
+
+/* ================= Settings: mobile-friendly ================= */
+@media (max-width: 768px) {
+    .settings-modal-content {
+        max-height: 92vh;
+    }
+    .settings-modal-body {
+        padding: 16px;
+    }
+    .settings-toolbar {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+    .settings-toolbar .btn {
+        padding: 9px 14px;
+    }
+    .service-list-item {
+        padding: 12px;
+        gap: 10px;
+    }
+    .service-list-reorder {
+        gap: 2px;
+        margin-right: 8px;
+    }
+    .reorder-btn {
+        padding: 5px 8px;
+        font-size: 13px;
+    }
+    .service-list-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 17px;
+    }
+    .service-list-details h4 {
+        font-size: 15px;
+        line-height: 1.6;
+    }
+    .service-list-details p {
+        font-size: 12px;
+    }
+    .svc-action-btn {
+        padding: 5px 9px;
+    }
+    .text-btn {
+        padding: 6px 8px;
+    }
+    .service-list-actions {
+        margin-left: 6px;
+    }
+}
+@media (max-width: 480px) {
+    .settings-modal-body {
+        padding: 12px;
+    }
+    .service-list-item {
+        padding: 10px;
+    }
+    .service-list-details h4 {
+        font-size: 14px;
+    }
+}
