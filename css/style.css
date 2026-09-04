@@ -1643,3 +1643,33 @@ input:checked + .toggle-slider:before {
         font-size: 14px;
     }
 }
+
+/* ================= Compose file preview (path source) ================= */
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
+    margin-top: 6px;
+}
+.compose-preview {
+    display: none;
+    margin-top: 8px;
+    background: var(--card-header-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 10px;
+    max-height: 220px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.compose-preview.show {
+    display: block;
+}
+.compose-preview.is-error {
+    color: #ef4444;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}

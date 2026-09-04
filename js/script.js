@@ -525,6 +525,7 @@ function loadServiceForEdit(id) {
                         document.getElementById('composePath').value = service.composePath || '';
                         document.getElementById('composeOption').value = 'path';
                         updateComposeOptionFields();
+                        loadComposePreview();
                     } else if (service.type === 'systemctl') {
                         document.getElementById('systemctlService').value = service.service || '';
                     }
@@ -568,6 +569,40 @@ function updateComposeOptionFields() {
     const option = document.getElementById('composeOption').value;
     document.getElementById('composePathGroup').style.display = option === 'path' ? 'block' : 'none';
     document.getElementById('composeContentGroup').style.display = option === 'content' ? 'block' : 'none';
+}
+
+function loadComposePreview() {
+    const preview = document.getElementById('composeFilePreview');
+    const btn = document.getElementById('loadComposeFileBtn');
+    if (!preview) return;
+    const path = (document.getElementById('composePath').value || '').trim();
+    if (!path) {
+        preview.textContent = '';
+        preview.classList.remove('show', 'is-error');
+        return;
+    }
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Loading…';
+    }
+    callServiceAPI({ action: 'read_compose_file', composePath: path })
+        .then(data => {
+            if (btn) { btn.disabled = false; btn.textContent = 'Show docker-compose.yml'; }
+            if (data.success) {
+                preview.textContent = '# ' + (data.fileName || 'docker-compose.yml') + '\n\n' + data.content;
+                preview.classList.remove('is-error');
+            } else {
+                preview.textContent = (data.error || 'Could not read the compose file.');
+                preview.classList.add('is-error');
+            }
+            preview.classList.add('show');
+        })
+        .catch(err => {
+            if (btn) { btn.disabled = false; btn.textContent = 'Show docker-compose.yml'; }
+            preview.textContent = 'Failed to load file: ' + err.message;
+            preview.classList.add('is-error');
+            preview.classList.add('show');
+        });
 }
 
 function saveService() {
@@ -941,6 +976,16 @@ document.addEventListener('DOMContentLoaded', function() {
     const composeOptionSelect = document.getElementById('composeOption');
     if (composeOptionSelect) {
         composeOptionSelect.addEventListener('change', updateComposeOptionFields);
+    }
+
+    // --- Compose file preview ---
+    const loadComposeFileBtn = document.getElementById('loadComposeFileBtn');
+    if (loadComposeFileBtn) {
+        loadComposeFileBtn.addEventListener('click', loadComposePreview);
+    }
+    const composePathInput = document.getElementById('composePath');
+    if (composePathInput) {
+        composePathInput.addEventListener('change', loadComposePreview);
     }
 
     // --- Service form submit ---
