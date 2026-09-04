@@ -135,6 +135,8 @@
                         <div class="form-group" id="composePathGroup">
                             <label for="composePath">Compose Directory Path</label>
                             <input type="text" id="composePath" placeholder="/srv/docker-compose/my-service">
+                            <button type="button" class="btn btn-secondary btn-sm" id="loadComposeFileBtn"><i class="fas fa-eye"></i> Show docker-compose.yml</button>
+                            <pre class="compose-preview" id="composeFilePreview"></pre>
                         </div>
                         <div class="form-group" id="composeContentGroup" style="display:none;">
                             <label for="composeContent">Docker Compose YAML</label>

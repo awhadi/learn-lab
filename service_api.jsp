@@ -336,7 +336,8 @@
 
     if (action != null && (action.equals("list_services") || action.equals("add_service") ||
         action.equals("update_service") || action.equals("delete_service") || action.equals("toggle_visible") ||
-        action.equals("reorder_service") || action.equals("batch_status") || action.equals("reset_services"))) {
+        action.equals("reorder_service") || action.equals("batch_status") || action.equals("reset_services")
+        || action.equals("read_compose_file"))) {
 
         try {
             String jsonConfig = readConfigFile(configPath);
@@ -353,6 +354,36 @@
                     writeConfigFile(configPath, defaultCfg);
                 }
                 out.print("{\"success\":true,\"message\":\"Services reset to defaults\"}");
+                return;
+            }
+
+            if ("read_compose_file".equals(action)) {
+                // Read-only preview of the compose file for a chosen directory,
+                // so users can verify what they are attaching to (path source).
+                String cp = request.getParameter("composePath");
+                if (cp == null || cp.trim().isEmpty()) {
+                    out.print("{\"success\":false,\"error\":\"Compose path is required\"}");
+                    return;
+                }
+                String baseP = extractJsonField(jsonConfig, "composeBasePath");
+                if (baseP == null || baseP.isEmpty()) baseP = "/srv/docker-compose";
+                if (!isWithinBase(cp.trim(), baseP)) {
+                    out.print("{\"success\":false,\"error\":\"Compose path must be inside " + escapeJsonStr(baseP) + "\"}");
+                    return;
+                }
+                String found = null;
+                for (String name : new String[]{"docker-compose.yml", "docker-compose.yaml"}) {
+                    Path f = Paths.get(cp.trim(), name);
+                    if (Files.isRegularFile(f)) { found = f.toString(); break; }
+                }
+                if (found == null) {
+                    out.print("{\"success\":false,\"error\":\"No docker-compose.yml or docker-compose.yaml found in this directory\"}");
+                    return;
+                }
+                String text = new String(Files.readAllBytes(Paths.get(found)), StandardCharsets.UTF_8);
+                if (text.length() > 256000) text = text.substring(0, 256000) + "\n... (file preview truncated)";
+                out.print("{\"success\":true,\"fileName\":\"" + escapeJsonStr(Paths.get(found).getFileName().toString())
+                    + "\",\"content\":\"" + escapeJsonStr(text) + "\"}");
                 return;
             }
 
