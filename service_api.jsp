@@ -88,12 +88,29 @@
     // exact same sudo WEB-INF/service_control.sh wrapper as start/stop/restart/logs
     // (which already has passwordless sudo on the lab), with a bounded
     // subprocess and a small output cap.
+    // Prefer the moved script inside WEB-INF, but keep working with the legacy
+    // web-root location so an existing deployment is never broken by the move.
+    private String controlScript() {
+        String[] candidates = {
+            "/opt/tomcat/webapps/ROOT/WEB-INF/service_control.sh",
+            "/opt/tomcat/webapps/ROOT/service_control.sh"
+        };
+        for (String c : candidates) {
+            if (new java.io.File(c).isFile()) return c;
+        }
+        return candidates[0];
+    }
+
     private String probeStatus(String type, String serviceId, String systemctlService, String composePath) {
         try {
+            String script = controlScript();
+            if (!new java.io.File(script).isFile()) {
+                logProblem("probeStatus: control script not found at " + script, null);
+                return "unknown";
+            }
             if ("systemctl".equals(type)) {
                 if (systemctlService == null || systemctlService.isEmpty()) return "unknown";
-                ProcessBuilder pb = new ProcessBuilder("sudo",
-                    "/opt/tomcat/webapps/ROOT/WEB-INF/service_control.sh",
+                ProcessBuilder pb = new ProcessBuilder("sudo", script,
                     "systemctl", systemctlService, "status", "100");
                 pb.redirectErrorStream(true);
                 String out = runProcess(pb, 10, 200).trim();
@@ -107,8 +124,7 @@
                 // Cheap guard: nothing can be running from a directory that is absent.
                 java.io.File d = new java.io.File(composePath);
                 if (!d.isDirectory()) return "stopped";
-                ProcessBuilder pb = new ProcessBuilder("sudo",
-                    "/opt/tomcat/webapps/ROOT/WEB-INF/service_control.sh",
+                ProcessBuilder pb = new ProcessBuilder("sudo", script,
                     "docker-compose", (serviceId != null ? serviceId : "compose"), "status", "100", composePath);
                 pb.redirectErrorStream(true);
                 String out = runProcess(pb, 10, 200).trim();
@@ -618,7 +634,8 @@
                             return;
                         }
                         try {
-                            ProcessBuilder pb = new ProcessBuilder("sudo", "/opt/tomcat/webapps/ROOT/WEB-INF/service_control.sh",
+                            String delScript = controlScript();
+                            ProcessBuilder pb = new ProcessBuilder("sudo", delScript,
                                 "docker-compose", id, "stop", "100", composeP);
                             pb.redirectErrorStream(true);
                             runProcess(pb, 30, 200);
@@ -865,9 +882,17 @@
             return;
         }
 
+        String script = controlScript();
+        if (!new java.io.File(script).isFile()) {
+            logProblem("action '" + action + "': control script not found at " + script, null);
+            out.print("{\"success\":false,\"error\":\"Control script not found on server (expected "
+                + escapeJsonStr(script) + "). See WEB-INF/enable-sudo-tomcat.sh.\"}");
+            return;
+        }
+
         String[] cmd;
         if ("systemctl".equals(serviceType)) {
-            cmd = new String[]{"sudo", "/opt/tomcat/webapps/ROOT/WEB-INF/service_control.sh",
+            cmd = new String[]{"sudo", script,
                 "systemctl", systemctlService, action, String.valueOf(lines)};
         } else if ("docker-compose".equals(serviceType)) {
             if (svcComposePath == null || svcComposePath.isEmpty()) {
@@ -880,7 +905,7 @@
                 out.print("{\"success\":false,\"error\":\"Compose path is outside the allowed base directory\"}");
                 return;
             }
-            cmd = new String[]{"sudo", "/opt/tomcat/webapps/ROOT/WEB-INF/service_control.sh",
+            cmd = new String[]{"sudo", script,
                 "docker-compose", service, action, String.valueOf(lines), svcComposePath};
         } else {
             out.print("{\"success\":false,\"error\":\"Service type not manageable\"}");
@@ -892,10 +917,23 @@
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
         String result = runProcess(pb, timeoutSec, outCap).trim();
+        String low = result.toLowerCase();
+        boolean scriptError = low.contains("sudo:") || low.contains("command not found")
+            || low.contains("no such file") || low.contains("not found")
+            || low.contains("permission denied") || low.contains("is not allowed")
+            || low.contains("a password is required") || low.contains("incorrect password");
 
         if ("logs".equals(action)) {
-            String escapedLogs = escapeJsonStr(result);
-            out.print("{\"success\":true,\"logs\":\"" + escapedLogs + "\"}");
+            if (scriptError) {
+                logProblem("logs for " + service + " failed: " + result, null);
+                out.print("{\"success\":false,\"error\":\"" + escapeJsonStr(result) + "\"}");
+            } else {
+                out.print("{\"success\":true,\"logs\":\"" + escapeJsonStr(result) + "\"}");
+            }
+        }
+        else if (scriptError) {
+            logProblem("action '" + action + "' for " + service + " failed: " + result, null);
+            out.print("{\"success\":false,\"error\":\"" + escapeJsonStr(result) + "\"}");
         }
         else {
             out.print("{\"success\":true,\"message\":\"Action " + action + " completed\"}");

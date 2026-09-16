@@ -9,7 +9,10 @@
 set -e
 
 SUDOERS_FILE="/etc/sudoers.d/tomcat"
+# Allow BOTH the new WEB-INF location and the legacy web-root location, so any
+# deployment layout keeps working (the old path is only used if the file exists).
 RULE="tomcat  ALL=(ALL) NOPASSWD: /opt/tomcat/webapps/ROOT/WEB-INF/service_control.sh"
+RULE_LEGACY="tomcat  ALL=(ALL) NOPASSWD: /opt/tomcat/webapps/ROOT/service_control.sh"
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "Must run as root. Try: sudo bash WEB-INF/enable-sudo-tomcat.sh"
@@ -25,11 +28,12 @@ if [ -f "$SUDOERS_FILE" ] && grep -q "tomcat" "$SUDOERS_FILE" 2>/dev/null; then
     [ "$REPLY" != "y" ] && [ "$REPLY" != "Y" ] && { echo "Aborted."; exit 0; }
 fi
 
-echo "$RULE" > "$SUDOERS_FILE"
+printf '%s\n%s\n' "$RULE" "$RULE_LEGACY" > "$SUDOERS_FILE"
 chmod 440 "$SUDOERS_FILE"
 
 if visudo -c -f "$SUDOERS_FILE" >/dev/null 2>&1; then
-    echo "Done: $RULE"
+    echo "Done:"
+    cat "$SUDOERS_FILE"
 else
     echo "Syntax error — rolling back"
     rm -f "$SUDOERS_FILE"
