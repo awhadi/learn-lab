@@ -1,8 +1,10 @@
-<%@ page import="java.io.*, java.nio.charset.StandardCharsets, java.nio.file.*, java.util.*, java.util.concurrent.*" %>
+<%@ page import="java.io.*, java.nio.charset.StandardCharsets, java.nio.file.*, java.util.*, java.util.concurrent.*, jakarta.servlet.http.HttpServletRequest" %>
 <%@ page contentType="application/json; charset=UTF-8" %><%!
     // Serializes config read-modify-write cycles across concurrent requests.
     static final Object CONFIG_LOCK = new Object();
     static final int MAX_LOG_LINES = 2000;
+    // Separate lock for the access log so it never contends with config writes.
+    static final Object ACCESS_LOG_LOCK = new Object();
 
     // Actions that change state must arrive as POST, never GET — a GET is
     // something a browser will fire on its own (an <img src>, a prefetch, an
@@ -11,8 +13,80 @@
     // UI already sends all of these as POST; this only blocks a bypass.
     static final Set<String> MUTATING_ACTIONS = new HashSet<String>(Arrays.asList(
         "add_service", "update_service", "delete_service", "toggle_visible",
-        "reorder_service", "reset_services", "import_services"
+        "reorder_service", "reset_services", "import_services", "track_access"
     ));
+
+    // Best-effort real client IP: honor a reverse proxy's forwarded-for
+    // headers (this app is proxied — see GUIDE.txt) before falling back to
+    // the raw socket address, which would otherwise show the proxy's own IP
+    // for every visitor.
+    private String getClientIp(HttpServletRequest request) {
+        String fwd = request.getHeader("X-Forwarded-For");
+        if (fwd != null && !fwd.trim().isEmpty()) {
+            String first = fwd.split(",")[0].trim();
+            if (!first.isEmpty()) return first;
+        }
+        String real = request.getHeader("X-Real-IP");
+        if (real != null && !real.trim().isEmpty()) return real.trim();
+        return request.getRemoteAddr();
+    }
+
+    // Access log is a flat tab-separated file (ip, firstAccess, count,
+    // lastAccess) rather than JSON — the existing JSON handling in this file
+    // is built around the fixed "services" schema, not an arbitrary keyed
+    // map, so a simple line format is the lower-risk fit for this data.
+    // Line format: ip \t firstAccess(ISO instant) \t count \t lastVisitDate(yyyy-MM-dd).
+    // A "visit" increments count only the first time a given IP is seen on a
+    // given calendar day — refreshing the same day never changes anything
+    // (no write even happens), so a thousand reloads today still read as 1.
+    // Coming back on a later calendar day adds exactly 1, regardless of how
+    // many times that new day is refreshed too.
+    private String[] trackAndGetAccess(String ip, String logPath) throws Exception {
+        List<String> lines = new ArrayList<String>();
+        if (Files.exists(Paths.get(logPath))) {
+            lines = Files.readAllLines(Paths.get(logPath), StandardCharsets.UTF_8);
+        }
+        String today = java.time.LocalDate.now().toString();
+        String nowIso = java.time.Instant.now().toString();
+        String firstAccess = nowIso;
+        int count = 1;
+        boolean found = false;
+        boolean changed = false;
+        for (int i = 0; i < lines.size(); i++) {
+            String[] parts = lines.get(i).split("\t", -1);
+            if (parts.length >= 4 && parts[0].equals(ip)) {
+                found = true;
+                firstAccess = parts[1];
+                try { count = Integer.parseInt(parts[2]); } catch (NumberFormatException nfe) { count = 1; }
+                String lastVisitDate = parts[3];
+                if (!today.equals(lastVisitDate)) {
+                    count = count + 1;
+                    lines.set(i, ip + "\t" + firstAccess + "\t" + count + "\t" + today);
+                    changed = true;
+                }
+                break;
+            }
+        }
+        if (!found) {
+            lines.add(ip + "\t" + nowIso + "\t1\t" + today);
+            firstAccess = nowIso;
+            count = 1;
+            changed = true;
+        }
+        if (changed) {
+            StringBuilder sb = new StringBuilder();
+            for (String l : lines) sb.append(l).append("\n");
+            Path target = Paths.get(logPath);
+            Path tmp = target.resolveSibling(target.getFileName().toString() + ".tmp");
+            Files.write(tmp, sb.toString().getBytes(StandardCharsets.UTF_8));
+            try {
+                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException amnse) {
+                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+        return new String[]{firstAccess, String.valueOf(count)};
+    }
 
     // Central error logger: everything written here lands in catalina.out
     // (Tomcat routes stderr there) with a timestamp, a short context and a
@@ -459,6 +533,26 @@
 
     if (action != null && MUTATING_ACTIONS.contains(action) && !"POST".equalsIgnoreCase(request.getMethod())) {
         out.print("{\"success\":false,\"error\":\"This action requires POST\"}");
+        return;
+    }
+
+    if ("track_access".equals(action)) {
+        // Server-side, IP-keyed visit tracking — replaces the old localStorage
+        // approach, which only ever counted "this browser", reset on a clear,
+        // and couldn't recognize the same visitor coming back on a different
+        // device. Stored server-side under WEB-INF, never exposed over HTTP.
+        try {
+            String ip = getClientIp(request);
+            String accessLogPath = application.getRealPath("/WEB-INF/access-log.tsv");
+            String[] result;
+            synchronized (ACCESS_LOG_LOCK) {
+                result = trackAndGetAccess(ip, accessLogPath);
+            }
+            out.print("{\"success\":true,\"firstAccess\":\"" + escapeJsonStr(result[0]) + "\",\"count\":" + result[1] + "}");
+        } catch (Exception e) {
+            logProblem("track_access failed", e);
+            out.print("{\"success\":false,\"error\":\"An unexpected error occurred\"}");
+        }
         return;
     }
 

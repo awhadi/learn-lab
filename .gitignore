@@ -1,2 +1,8 @@
 .kunsdd/
 .DS_Store
+
+# Runtime visit-tracking data (server-local, never source) — see
+# service_api.jsp's track_access action. Real IP addresses live in here,
+# generated per-deployment, so this must never be committed.
+WEB-INF/access-log.tsv
+WEB-INF/access-log.tsv.tmp

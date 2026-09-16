@@ -61,16 +61,24 @@ function acceptDisclaimer() {
     document.body.style.overflow = 'auto';
 }
 
+// Server-side, IP-keyed tracking (see service_api.jsp's track_access action) —
+// localStorage only ever counted "this browser" and reset on a clear, so it
+// couldn't recognize the same visitor coming back on a different device.
 function trackAccess() {
-    const now = new Date();
-    let first = localStorage.getItem('firstAccess');
-    if (!first) { localStorage.setItem('firstAccess', now.toISOString()); first = now.toISOString(); }
     const firstElem = document.getElementById('displayFirstAccess');
-    if (firstElem) firstElem.textContent = new Date(first).toLocaleString();
-    const count = (parseInt(localStorage.getItem('accessCount') || '0') + 1);
-    localStorage.setItem('accessCount', count);
     const countElem = document.getElementById('displayAccessCount');
-    if (countElem) countElem.textContent = count;
+    fetch('/service_api.jsp?action=track_access', { method: 'POST', cache: 'no-store' })
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) throw new Error(data.error || 'unknown error');
+            if (firstElem) firstElem.textContent = new Date(data.firstAccess).toLocaleString();
+            if (countElem) countElem.textContent = data.count;
+        })
+        .catch(err => {
+            console.error('[dashboard] trackAccess failed:', err);
+            if (firstElem) firstElem.textContent = 'Unavailable';
+            if (countElem) countElem.textContent = '—';
+        });
 }
 
 function checkDisclaimerStatus() {
