@@ -29,6 +29,13 @@
     <link rel="stylesheet" href="/css/style.css?v=<%= appVersion %>-<%= System.currentTimeMillis() %>">
 </head>
 <body>
+    <div id="serverOutdated" class="notice notice-error" style="display:none;">
+        <i class="fas fa-exclamation-triangle"></i>
+        Server file <code>service_api.jsp</code> is older than this page (expected <strong><%= appVersion %></strong>).
+        Export / Import settings will not work until it is deployed.
+    </div>
+
+
     <div id="disclaimer">
         <div class="disclaimer-container">
             <button class="close-btn" data-action="closeDisclaimer"><i class="fas fa-times"></i></button>
@@ -101,7 +108,7 @@
                     <button class="btn btn-primary" id="addServiceBtn"><i class="fas fa-plus"></i> Add Service</button>
                     <div class="settings-toolbar-right">
                         <button class="btn btn-secondary" id="resetServicesBtn" title="Restore the default service list and settings"><i class="fas fa-undo-alt"></i> Reset to default</button>
-                        <a class="btn btn-secondary" id="exportSettingsLink" href="/service_api.jsp?action=export_settings" title="Download the current settings as a JSON file"><i class="fas fa-download"></i> Export settings</a>
+                        <a class="btn btn-secondary" id="exportSettingsLink" target="_blank" rel="noopener" href="<%= request.getContextPath() %>/service_api.jsp?action=export_settings" title="Download the current settings as a JSON file"><i class="fas fa-download"></i> Export settings</a>
                         <label class="btn btn-secondary" id="importSettingsLabel" title="Load settings from a saved JSON file">
                             <i class="fas fa-upload"></i> Import settings
                             <input type="file" id="importSettingsFile" accept=".json,application/json" style="display:none" onchange="labImportSettings(this)">
@@ -263,6 +270,23 @@
             };
             reader.readAsText(file);
         }
+
+        // Guard: if the deployed service_api.jsp is older than this page, warn the
+        // user instead of letting Export/Import fail confusingly.
+        (function () {
+            function warn() {
+                var el = document.getElementById('serverOutdated');
+                if (el) el.style.display = 'block';
+            }
+            try {
+                fetch('/service_api.jsp?action=export_settings', { method: 'GET' })
+                    .then(function (r) {
+                        var cd = r.headers.get('Content-Disposition') || '';
+                        if (!r.ok || cd.indexOf('lab-services') === -1) warn();
+                    })
+                    .catch(warn);
+            } catch (e) { warn(); }
+        })();
     </script>
     <script src="/js/script.js?v=<%= appVersion %>-<%= System.currentTimeMillis() %>"></script>
 </body>
