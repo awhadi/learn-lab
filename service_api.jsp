@@ -4,10 +4,21 @@
     static final Object CONFIG_LOCK = new Object();
     static final int MAX_LOG_LINES = 2000;
 
+    // Central error logger: everything written here lands in catalina.out
+    // (Tomcat routes stderr there) with a timestamp, a short context and a
+    // stack trace when one is available.
+    private void logProblem(String where, Throwable t) {
+        java.text.SimpleDateFormat fmt = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        String detail = (t == null) ? "" : (" :: " + t.getClass().getName() + ": " + t.getMessage());
+        System.err.println("[service-api] " + fmt.format(new java.util.Date()) + " " + where + detail);
+        if (t != null) t.printStackTrace();
+    }
+
     private String readConfigFile(String path) {
         try {
             return new String(Files.readAllBytes(Paths.get(path)), StandardCharsets.UTF_8);
         } catch (Exception e) {
+            logProblem("readConfigFile failed for " + path, e);
             return "{\"services\":[],\"settings\":{\"composeBasePath\":\"/srv/docker-compose\"}}";
         }
     }
@@ -57,6 +68,7 @@
             }
             boolean timedOut = proc.isAlive();
             if (timedOut) {
+                logProblem("command timed out after " + timeoutSeconds + "s: " + pb.command(), null);
                 proc.destroyForcibly();
                 proc.waitFor();
                 if (read < maxOutputLines) output.append("(command timed out after ").append(timeoutSeconds).append("s)\n");
@@ -87,6 +99,7 @@
                 String out = runProcess(pb, 10, 200).trim();
                 if (out.equals("active") || out.equals("running")) return "running";
                 if (out.equals("inactive") || out.equals("dead") || out.equals("stopped") || out.isEmpty()) return "stopped";
+                logProblem("probeStatus systemctl=" + systemctlService + " unexpected output: " + out, null);
                 return "unknown";
             }
             if ("docker-compose".equals(type)) {
@@ -101,10 +114,12 @@
                 String out = runProcess(pb, 10, 200).trim();
                 if (out.equals("running")) return "running";
                 if (out.equals("stopped") || out.isEmpty()) return "stopped";
+                logProblem("probeStatus compose=" + composePath + " unexpected output: " + out, null);
                 return "unknown";
             }
             return "static";
         } catch (Exception ex) {
+            logProblem("probeStatus(" + type + ", " + serviceId + ") failed", ex);
             return "unknown";
         }
     }
@@ -347,6 +362,7 @@
                 synchronized (CONFIG_LOCK) {
                     Path df = Paths.get(application.getRealPath("/WEB-INF/services.default.json"));
                     if (!Files.exists(df)) {
+                        logProblem("reset_services: default snapshot missing at " + df, null);
                         out.print("{\"success\":false,\"error\":\"Default configuration file is missing on the server\"}");
                         return;
                     }
@@ -362,12 +378,14 @@
                 // so users can verify what they are attaching to (path source).
                 String cp = request.getParameter("composePath");
                 if (cp == null || cp.trim().isEmpty()) {
+                    logProblem("read_compose_file: missing composePath parameter", null);
                     out.print("{\"success\":false,\"error\":\"Compose path is required\"}");
                     return;
                 }
                 String baseP = extractJsonField(jsonConfig, "composeBasePath");
                 if (baseP == null || baseP.isEmpty()) baseP = "/srv/docker-compose";
                 if (!isWithinBase(cp.trim(), baseP)) {
+                    logProblem("read_compose_file: rejected path outside base: " + cp + " (base " + baseP + ")", null);
                     out.print("{\"success\":false,\"error\":\"Compose path must be inside " + escapeJsonStr(baseP) + "\"}");
                     return;
                 }
@@ -377,6 +395,7 @@
                     if (Files.isRegularFile(f)) { found = f.toString(); break; }
                 }
                 if (found == null) {
+                    logProblem("read_compose_file: no compose file in " + cp, null);
                     out.print("{\"success\":false,\"error\":\"No docker-compose.yml or docker-compose.yaml found in this directory\"}");
                     return;
                 }
@@ -418,7 +437,7 @@
                         try {
                             String bp = extractJsonField(jsonConfig, "composeBasePath");
                             if (bp != null && !bp.isEmpty()) basePath = bp;
-                        } catch (Exception e) {}
+                        } catch (Exception e) { logProblem("add_service: reading composeBasePath failed", e); }
 
                         finalComposePath = basePath + "/" + id;
                         Path composeDir = Paths.get(finalComposePath);
@@ -430,7 +449,7 @@
                             Runtime.getRuntime().exec(new String[]{
                                 "chmod", "644", finalComposePath + "/docker-compose.yml"
                             }).waitFor();
-                        } catch (Exception e) {}
+                        } catch (Exception e) { logProblem("add_service: chmod on " + finalComposePath + " failed", e); }
 
                     } else if (composePathParam != null && !composePathParam.trim().isEmpty()) {
                         finalComposePath = composePathParam.trim();
@@ -438,7 +457,7 @@
                         try {
                             String bp = extractJsonField(jsonConfig, "composeBasePath");
                             if (bp != null && !bp.isEmpty()) basePath = bp;
-                        } catch (Exception e) {}
+                        } catch (Exception e) { logProblem("add_service: reading composeBasePath failed", e); }
                         if (!isWithinBase(finalComposePath, basePath)) {
                             out.print("{\"success\":false,\"error\":\"Compose path must be inside " + escapeJsonStr(basePath) + "\"}");
                             return;
@@ -603,12 +622,12 @@
                                 "docker-compose", id, "stop", "100", composeP);
                             pb.redirectErrorStream(true);
                             runProcess(pb, 30, 200);
-                        } catch (Exception e) { /* ignore: config entry removal continues */ }
+                        } catch (Exception e) { logProblem("delete_service: stopping compose " + id + " failed", e); }
                         try {
                             ProcessBuilder pb2 = new ProcessBuilder("sudo", "rm", "-rf", composeP);
                             pb2.redirectErrorStream(true);
                             runProcess(pb2, 60, 100);
-                        } catch (Exception e) { /* ignore */ }
+                        } catch (Exception e) { logProblem("delete_service: removing " + composeP + " failed", e); }
                     }
                 }
 
@@ -794,7 +813,7 @@
 
         } catch (Exception e) {
             // Log details server-side; never echo internals to the client.
-            e.printStackTrace();
+            logProblem("action '" + action + "' failed (query: " + request.getQueryString() + ")", e);
             out.print("{\"success\":false,\"error\":\"An unexpected error occurred\"}");
             return;
         }
@@ -882,7 +901,7 @@
             out.print("{\"success\":true,\"message\":\"Action " + action + " completed\"}");
         }
     } catch (Exception e) {
-        e.printStackTrace();
+        logProblem("service '" + service + "' action '" + action + "' failed", e);
         out.print("{\"success\":false,\"error\":\"An unexpected error occurred\"}");
     }
 %>

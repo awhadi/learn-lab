@@ -2,6 +2,14 @@
 // No client-side secret: the lab control API is open by design (see service_api.jsp).
 const BASE_URL = window.SERVICES_CONFIG ? window.SERVICES_CONFIG.baseUrl : "";
 
+// Global client-side error logging so failures are visible in the console.
+window.addEventListener('error', (e) => {
+    console.error('[dashboard] uncaught error:', e.message || e.type, e.filename ? (e.filename + ':' + e.lineno) : '', e.error || '');
+});
+window.addEventListener('unhandledrejection', (e) => {
+    console.error('[dashboard] unhandled promise rejection:', e.reason);
+});
+
 // ==================== Theme management ====================
 (function () {
     const root = document.documentElement;
@@ -86,7 +94,21 @@ function callServiceAPI(params) {
     const q = qs.toString();
     const url = q ? `/service_api.jsp?${q}` : '/service_api.jsp';
     return fetch(url, { method: params.action === 'list_services' ? 'GET' : (params.action === 'add_service' || params.action === 'update_service' || params.action === 'delete_service' ? 'POST' : (params.action === 'status' || params.action === 'logs' ? 'GET' : 'POST')) })
-        .then(r => r.json());
+        .then(r => {
+            if (!r.ok) {
+                const httpErr = new Error('HTTP ' + r.status + ' ' + r.statusText);
+                console.error('[service-api] request failed:', url, 'params=', params, httpErr);
+                throw httpErr;
+            }
+            return r.json().catch(jsonErr => {
+                console.error('[service-api] invalid JSON response from:', url, jsonErr);
+                throw jsonErr;
+            });
+        })
+        .catch(err => {
+            console.error('[service-api] call failed:', params && params.action, url, err);
+            throw err;
+        });
 }
 
 // ==================== Settings Modal (Admin Panel) ====================
@@ -645,12 +667,14 @@ function refreshMainPage() {
 
 // ==================== Service Management Modal ====================
 let currentService = null;
+let currentServiceName = null;
 
-function openServiceModal(service) {
+function openServiceModal(service, serviceName) {
     currentService = service;
+    currentServiceName = serviceName || service;
     const modal = document.getElementById('serviceModal');
     const titleElem = document.getElementById('modalServiceTitle');
-    titleElem.innerText = service.charAt(0).toUpperCase() + service.slice(1) + ' Management';
+    titleElem.innerText = currentServiceName + ' Management';
     modal.style.display = 'flex';
     document.getElementById('modalStatusIndicator').className = 'service-status-indicator';
     document.getElementById('modalStatusText').innerText = 'Checking status...';
@@ -662,6 +686,7 @@ function openServiceModal(service) {
 function closeServiceModal() {
     document.getElementById('serviceModal').style.display = 'none';
     currentService = null;
+    currentServiceName = null;
 }
 
 function fetchStatusAndUpdateModal(service) {
@@ -715,21 +740,23 @@ function renderModalButtons(service, isRunning) {
 }
 
 function performAction(service, action) {
-    if (!confirm(`Are you sure you want to ${action} ${service}?`)) return;
+    const label = currentServiceName || service;
+    if (!confirm(`Are you sure you want to ${action} ${label}?`)) return;
     executeAction(service, action);
 }
 
 function executeAction(service, action) {
+    const label = currentServiceName || service;
     const loadingModal = document.getElementById('loadingModal');
     const loadingText = document.getElementById('loadingText');
-    loadingText.innerText = `${action}ing ${service}...`;
+    loadingText.innerText = `${action}ing ${label}...`;
     loadingModal.style.display = 'flex';
 
     callServiceAPI({ service: service, action: action })
         .then(data => {
             loadingModal.style.display = 'none';
             if (data.success) {
-                alert(`${service} ${action} completed successfully.`);
+                alert(`${label} ${action} completed successfully.`);
                 if (currentService === service) {
                     const delay = action === 'restart' ? 5000 : 2000;
                     setTimeout(() => fetchStatusAndUpdateModal(service), delay);
@@ -833,7 +860,7 @@ function loadAndRenderServices() {
                 const footerHtml = (canManage || hasOpen)
                     ? `<div class="card-footer-right">
                         <div class="card-footer-links">${linkButtons}</div>
-                        ${canManage ? `<a href="#" class="manage-btn" data-service="${escapeHtml(svc.id)}"><i class="fas fa-cog"></i> Manage</a>` : ''}
+                        ${canManage ? `<a href="#" class="manage-btn" data-service="${escapeHtml(svc.id)}" data-name="${escapeHtml(svc.name)}"><i class="fas fa-cog"></i> Manage</a>` : ''}
                        </div>`
                     : '';
 
@@ -856,7 +883,7 @@ function loadAndRenderServices() {
             container.querySelectorAll('.manage-btn').forEach(btn => {
                 btn.addEventListener('click', function(e) {
                     e.preventDefault();
-                    openServiceModal(this.dataset.service);
+                    openServiceModal(this.dataset.service, this.dataset.name);
                 });
             });
         })

@@ -13,7 +13,10 @@
             if (ln.startsWith("app:")) appVersion = ln.substring(4).trim();
             else if (ln.startsWith("pega:")) pegaVersion = ln.substring(5).trim();
         }
-    } catch (Exception e) {}
+    } catch (Exception e) {
+        // Keep the page usable, but leave a trace in catalina.out for diagnosis.
+        System.err.println("[index] VERSION read failed: " + e);
+    }
 %><!DOCTYPE html>
 <html lang="en">
 <head>
