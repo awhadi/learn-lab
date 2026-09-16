@@ -20,12 +20,16 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 if [ -f "$SUDOERS_FILE" ] && grep -q "tomcat" "$SUDOERS_FILE" 2>/dev/null; then
-    echo "Rule already exists:"
+    echo "Existing $SUDOERS_FILE:"
     cat "$SUDOERS_FILE"
     echo ""
-    printf "Overwrite? [y/N] "
-    read -r REPLY
-    [ "$REPLY" != "y" ] && [ "$REPLY" != "Y" ] && { echo "Aborted."; exit 0; }
+    if [ -t 0 ]; then
+        printf "Overwrite? [y/N] "
+        read -r REPLY
+        [ "$REPLY" != "y" ] && [ "$REPLY" != "Y" ] && { echo "Aborted."; exit 0; }
+    else
+        echo "Non-interactive shell: overwriting without prompt."
+    fi
 fi
 
 printf '%s\n%s\n' "$RULE" "$RULE_LEGACY" > "$SUDOERS_FILE"

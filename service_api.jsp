@@ -88,32 +88,73 @@
     // exact same sudo WEB-INF/service_control.sh wrapper as start/stop/restart/logs
     // (which already has passwordless sudo on the lab), with a bounded
     // subprocess and a small output cap.
-    // Prefer the moved script inside WEB-INF, but keep working with the legacy
-    // web-root location so an existing deployment is never broken by the move.
-    private String controlScript() {
-        String[] candidates = {
+    // Candidate control-script locations: the new WEB-INF home first, then the
+    // legacy web-root path. Whichever exists (and is permitted by sudoers) works.
+    private String[] controlScriptCandidates() {
+        return new String[]{
             "/opt/tomcat/webapps/ROOT/WEB-INF/service_control.sh",
             "/opt/tomcat/webapps/ROOT/service_control.sh"
         };
-        for (String c : candidates) {
-            if (new java.io.File(c).isFile()) return c;
+    }
+
+    private boolean anyControlScriptExists() {
+        for (String s : controlScriptCandidates()) if (new java.io.File(s).isFile()) return true;
+        return false;
+    }
+
+    private String firstControlScript() {
+        for (String s : controlScriptCandidates()) if (new java.io.File(s).isFile()) return s;
+        return controlScriptCandidates()[0];
+    }
+
+    // True when the output looks like the command never really ran (sudo denied
+    // it, asked for a password, the path is wrong, ...).
+    private boolean isScriptError(String out) {
+        String low = out == null ? "" : out.toLowerCase();
+        return low.contains("sudo:") || low.contains("command not found")
+            || low.contains("no such file") || low.contains("not found")
+            || low.contains("permission denied") || low.contains("is not allowed")
+            || low.contains("a password is required") || low.contains("incorrect password")
+            || low.contains("a terminal is required") || low.contains("not allowed to execute");
+    }
+
+    // Runs the control script, trying every existing candidate path until one is
+    // actually permitted. This covers a sudoers rule that still points at the
+    // legacy path while the script now lives in WEB-INF (and vice versa).
+    private String runControlScript(long timeoutSeconds, int maxOutputLines, java.util.List<String> triedPaths, String... args) {
+        String lastError = "";
+        for (String script : controlScriptCandidates()) {
+            if (!new java.io.File(script).isFile()) continue;
+            triedPaths.add(script);
+            try {
+                String[] cmd = new String[args.length + 2];
+                cmd[0] = "sudo";
+                cmd[1] = script;
+                System.arraycopy(args, 0, cmd, 2, args.length);
+                ProcessBuilder pb = new ProcessBuilder(cmd);
+                pb.redirectErrorStream(true);
+                String out = runProcess(pb, timeoutSeconds, maxOutputLines).trim();
+                if (!isScriptError(out)) return out;
+                lastError = out;
+                logProblem("control script " + script + " not usable, trying next: " + out, null);
+            } catch (Exception ex) {
+                logProblem("control script " + script + " threw", ex);
+                lastError = String.valueOf(ex.getMessage());
+            }
         }
-        return candidates[0];
+        return lastError;
     }
 
     private String probeStatus(String type, String serviceId, String systemctlService, String composePath) {
         try {
-            String script = controlScript();
-            if (!new java.io.File(script).isFile()) {
-                logProblem("probeStatus: control script not found at " + script, null);
+            if (!anyControlScriptExists()) {
+                logProblem("probeStatus: no control script found in " + java.util.Arrays.toString(controlScriptCandidates()), null);
                 return "unknown";
             }
             if ("systemctl".equals(type)) {
                 if (systemctlService == null || systemctlService.isEmpty()) return "unknown";
-                ProcessBuilder pb = new ProcessBuilder("sudo", script,
+                String out = runControlScript(10, 200, new java.util.ArrayList<String>(),
                     "systemctl", systemctlService, "status", "100");
-                pb.redirectErrorStream(true);
-                String out = runProcess(pb, 10, 200).trim();
                 if (out.equals("active") || out.equals("running")) return "running";
                 if (out.equals("inactive") || out.equals("dead") || out.equals("stopped") || out.isEmpty()) return "stopped";
                 logProblem("probeStatus systemctl=" + systemctlService + " unexpected output: " + out, null);
@@ -124,10 +165,8 @@
                 // Cheap guard: nothing can be running from a directory that is absent.
                 java.io.File d = new java.io.File(composePath);
                 if (!d.isDirectory()) return "stopped";
-                ProcessBuilder pb = new ProcessBuilder("sudo", script,
+                String out = runControlScript(10, 200, new java.util.ArrayList<String>(),
                     "docker-compose", (serviceId != null ? serviceId : "compose"), "status", "100", composePath);
-                pb.redirectErrorStream(true);
-                String out = runProcess(pb, 10, 200).trim();
                 if (out.equals("running")) return "running";
                 if (out.equals("stopped") || out.isEmpty()) return "stopped";
                 logProblem("probeStatus compose=" + composePath + " unexpected output: " + out, null);
@@ -634,7 +673,7 @@
                             return;
                         }
                         try {
-                            String delScript = controlScript();
+                            String delScript = firstControlScript();
                             ProcessBuilder pb = new ProcessBuilder("sudo", delScript,
                                 "docker-compose", id, "stop", "100", composeP);
                             pb.redirectErrorStream(true);
@@ -882,18 +921,16 @@
             return;
         }
 
-        String script = controlScript();
-        if (!new java.io.File(script).isFile()) {
-            logProblem("action '" + action + "': control script not found at " + script, null);
-            out.print("{\"success\":false,\"error\":\"Control script not found on server (expected "
-                + escapeJsonStr(script) + "). See WEB-INF/enable-sudo-tomcat.sh.\"}");
+        if (!anyControlScriptExists()) {
+            logProblem("action '" + action + "': no control script found in " + java.util.Arrays.toString(controlScriptCandidates()), null);
+            out.print("{\"success\":false,\"error\":\"Control script not found on server (looked in "
+                + escapeJsonStr(java.util.Arrays.toString(controlScriptCandidates())) + "). See WEB-INF/enable-sudo-tomcat.sh.\"}");
             return;
         }
 
-        String[] cmd;
+        String[] args;
         if ("systemctl".equals(serviceType)) {
-            cmd = new String[]{"sudo", script,
-                "systemctl", systemctlService, action, String.valueOf(lines)};
+            args = new String[]{"systemctl", systemctlService, action, String.valueOf(lines)};
         } else if ("docker-compose".equals(serviceType)) {
             if (svcComposePath == null || svcComposePath.isEmpty()) {
                 out.print("{\"success\":false,\"error\":\"No compose path configured\"}");
@@ -905,8 +942,7 @@
                 out.print("{\"success\":false,\"error\":\"Compose path is outside the allowed base directory\"}");
                 return;
             }
-            cmd = new String[]{"sudo", script,
-                "docker-compose", service, action, String.valueOf(lines), svcComposePath};
+            args = new String[]{"docker-compose", service, action, String.valueOf(lines), svcComposePath};
         } else {
             out.print("{\"success\":false,\"error\":\"Service type not manageable\"}");
             return;
@@ -914,14 +950,9 @@
 
         long timeoutSec = "logs".equals(action) ? 20 : ("status".equals(action) ? 10 : 60);
         int outCap = "logs".equals(action) ? (lines + 200) : 400;
-        ProcessBuilder pb = new ProcessBuilder(cmd);
-        pb.redirectErrorStream(true);
-        String result = runProcess(pb, timeoutSec, outCap).trim();
-        String low = result.toLowerCase();
-        boolean scriptError = low.contains("sudo:") || low.contains("command not found")
-            || low.contains("no such file") || low.contains("not found")
-            || low.contains("permission denied") || low.contains("is not allowed")
-            || low.contains("a password is required") || low.contains("incorrect password");
+        java.util.List<String> triedPaths = new java.util.ArrayList<String>();
+        String result = runControlScript(timeoutSec, outCap, triedPaths, args);
+        boolean scriptError = isScriptError(result);
 
         if ("logs".equals(action)) {
             if (scriptError) {
@@ -933,7 +964,10 @@
         }
         else if (scriptError) {
             logProblem("action '" + action + "' for " + service + " failed: " + result, null);
-            out.print("{\"success\":false,\"error\":\"" + escapeJsonStr(result) + "\"}");
+            String hint = result.isEmpty()
+                ? "No permitted control script. Add a NOPASSWD sudoers rule for one of: " + triedPaths
+                : result;
+            out.print("{\"success\":false,\"error\":\"" + escapeJsonStr(hint) + "\"}");
         }
         else {
             out.print("{\"success\":true,\"message\":\"Action " + action + " completed\"}");
