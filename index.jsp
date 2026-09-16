@@ -26,7 +26,7 @@
     <link rel="icon" href="/favicon.ico?" />
     <link rel="stylesheet" href="/css/fontawesome-free/css/all.min.css">
     <script src="/js/vendor/purify.min.js"></script>
-    <link rel="stylesheet" href="/css/style.css">
+    <link rel="stylesheet" href="/css/style.css?v=<%= appVersion %>">
 </head>
 <body>
     <div id="disclaimer">
@@ -206,6 +206,6 @@
             baseUrl: '<%= baseUrl %>'
         };
     </script>
-    <script src="/js/script.js"></script>
+    <script src="/js/script.js?v=<%= appVersion %>"></script>
 </body>
 </html>
