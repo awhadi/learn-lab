@@ -4,6 +4,16 @@
     static final Object CONFIG_LOCK = new Object();
     static final int MAX_LOG_LINES = 2000;
 
+    // Actions that change state must arrive as POST, never GET — a GET is
+    // something a browser will fire on its own (an <img src>, a prefetch, an
+    // <iframe>) with zero user intent, so allowing it here would let any
+    // unrelated page a visitor has open trigger these as a side effect. The
+    // UI already sends all of these as POST; this only blocks a bypass.
+    static final Set<String> MUTATING_ACTIONS = new HashSet<String>(Arrays.asList(
+        "add_service", "update_service", "delete_service", "toggle_visible",
+        "reorder_service", "reset_services", "import_services"
+    ));
+
     // Central error logger: everything written here lands in catalina.out
     // (Tomcat routes stderr there) with a timestamp, a short context and a
     // stack trace when one is available.
@@ -205,8 +215,10 @@
         for (String bad : new String[]{"<script", "<iframe", "<object", "<embed", "javascript:", "data:text/html", "srcdoc"}) {
             if (lower.contains(bad)) return "Refused: the file contains " + bad + "";
         }
+        // Matches any "onXxx=" attribute rather than an enumerated list, so a
+        // handler name this list doesn't know about can't slip past it.
         java.util.regex.Matcher handler = java.util.regex.Pattern.compile(
-            "\\bon(click|dblclick|load|error|mouse[a-z]*|key[a-z]*|focus|blur|submit|change|input|toggle|animation[a-z]*|transition[a-z]*)\\s*=").matcher(content);
+            "\\bon[a-z]{2,32}\\s*=", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(content);
         if (handler.find()) return "Refused: the file contains an inline event handler (" + handler.group() + ")";
 
         java.util.regex.Pattern idRe = java.util.regex.Pattern.compile("\\\"id\\\":\\\"([^\\\"]*)\\\"");
@@ -443,6 +455,11 @@
         }
         if (lines < 1) lines = 1;
         if (lines > MAX_LOG_LINES) lines = MAX_LOG_LINES;
+    }
+
+    if (action != null && MUTATING_ACTIONS.contains(action) && !"POST".equalsIgnoreCase(request.getMethod())) {
+        out.print("{\"success\":false,\"error\":\"This action requires POST\"}");
+        return;
     }
 
     if (action != null && (action.equals("list_services") || action.equals("add_service") ||
@@ -996,6 +1013,15 @@
 
     if (!svcBlock.contains("\"" + action + "\"")) {
         out.print("{\"success\":false,\"error\":\"Action '" + action + "' not allowed for this service\"}");
+        return;
+    }
+
+    // status/logs are read-only and stay reachable via GET; start/stop/restart
+    // change real infrastructure state and must arrive as POST (see MUTATING_ACTIONS
+    // above for why a GET-triggerable mutation is dangerous even without auth).
+    if (("start".equals(action) || "stop".equals(action) || "restart".equals(action))
+        && !"POST".equalsIgnoreCase(request.getMethod())) {
+        out.print("{\"success\":false,\"error\":\"This action requires POST\"}");
         return;
     }
 

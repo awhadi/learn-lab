@@ -32,11 +32,6 @@ window.addEventListener('unhandledrejection', (e) => {
     });
 })();
 
-// ==================== Mobile menu ====================
-function toggleMobileMenu() {
-    document.getElementById('navLinks').classList.toggle('active');
-}
-
 // ==================== Time display ====================
 let clockTimer = null;
 function tickClock() {
@@ -126,6 +121,9 @@ const DISABLED_DELETE_IDS = ['docker', 'tomcat-service'];
 
 function openSettingsModal() {
     document.getElementById('settingsModal').style.display = 'flex';
+    // Freeze the page behind the modal — otherwise the main page and the
+    // modal's own list both scroll independently, showing two scrollbars.
+    document.body.style.overflow = 'hidden';
     loadServicesList();
     // Tell the truth about the deployed server file before the user picks a file.
     if (window.labCheckImportSupport) window.labCheckImportSupport();
@@ -133,6 +131,7 @@ function openSettingsModal() {
 
 function closeSettingsModal() {
     document.getElementById('settingsModal').style.display = 'none';
+    document.body.style.overflow = '';
     loadAndRenderServices();
 }
 
@@ -170,30 +169,30 @@ function renderServicesList(services) {
         item.className = 'service-list-item';
         item.draggable = true;
         item.dataset.id = svc.id;
-        const badgeHtml = isStatusType
-            ? `<span class="svc-status-badge" data-svc="${escapeHtml(svc.id)}" id="svc-status-${escapeHtml(svc.id)}">…</span>`
+        // Six independently-positioned pieces (reorder, icon, details, status
+        // badge, status action button(s), toggle/edit/delete) are all direct
+        // children of .service-list-item, which is a CSS grid. This lets
+        // desktop and mobile arrange the exact same elements completely
+        // differently (see the max-width:768px rules) using only grid-area,
+        // with no DOM difference between breakpoints.
+        const statusBadgeHtml = isStatusType
+            ? `<span class="svc-status"><span class="svc-status-badge" data-svc="${escapeHtml(svc.id)}" id="svc-status-${escapeHtml(svc.id)}">…</span></span>`
             : '';
-        // Badge + action button are grouped together (status and the control
-        // for it belong side by side) and live as their own centered flex item,
-        // separate from both the title line and the toggle/edit/delete group.
-        const statusGroupHtml = isStatusType
-            ? `<span class="svc-status">${badgeHtml}<span class="svc-actions" id="svc-actions-${escapeHtml(svc.id)}" data-id="${escapeHtml(svc.id)}"></span></span>`
+        const statusActionsHtml = isStatusType
+            ? `<span class="svc-actions" id="svc-actions-${escapeHtml(svc.id)}" data-id="${escapeHtml(svc.id)}"></span>`
             : '';
         item.innerHTML = `
-            <div class="service-list-main">
-                <div class="service-list-reorder">
-                    <button class="reorder-btn btn-move-up" data-id="${escapeHtml(svc.id)}" title="Move up" ${index === 0 ? 'disabled' : ''}><i class="fas fa-chevron-up"></i></button>
-                    <button class="reorder-btn btn-move-down" data-id="${escapeHtml(svc.id)}" title="Move down" ${index === services.length - 1 ? 'disabled' : ''}><i class="fas fa-chevron-down"></i></button>
-                </div>
-                <div class="service-list-info">
-                    <div class="service-list-icon"><i class="${escapeHtml(svc.icon || 'fas fa-cube')}"></i></div>
-                    <div class="service-list-details">
-                        <h4>${escapeHtml(svc.name)}</h4>
-                        <p>${escapeHtml(svc.type)} ${svc.manageable ? '• Manageable' : ''}</p>
-                    </div>
-                </div>
-                ${statusGroupHtml}
+            <div class="service-list-reorder">
+                <button class="reorder-btn btn-move-up" data-id="${escapeHtml(svc.id)}" title="Move up" ${index === 0 ? 'disabled' : ''}><i class="fas fa-chevron-up"></i></button>
+                <button class="reorder-btn btn-move-down" data-id="${escapeHtml(svc.id)}" title="Move down" ${index === services.length - 1 ? 'disabled' : ''}><i class="fas fa-chevron-down"></i></button>
             </div>
+            <div class="service-list-icon"><i class="${escapeHtml(svc.icon || 'fas fa-cube')}"></i></div>
+            <div class="service-list-details">
+                <h4>${escapeHtml(svc.name)}</h4>
+                <p>${escapeHtml(svc.type)} ${svc.manageable ? '• Manageable' : ''}</p>
+            </div>
+            ${statusBadgeHtml}
+            ${statusActionsHtml}
             <div class="service-list-actions">
                 <label class="toggle-switch" title="${svc.visible ? 'Hide from main page (service keeps running)' : 'Show on main page (service keeps running)'}">
                     <input type="checkbox" class="visibility-toggle" data-id="${escapeHtml(svc.id)}" data-visible="${escapeHtml(svc.visible)}" ${svc.visible ? 'checked' : ''}>
@@ -389,22 +388,16 @@ function rowAction(id, action, btn) {
 }
 
 function reorderService(id, dir) {
-    callServiceAPI({ action: 'reorder_service', id: id, dir: dir })
-        .then(data => {
-            if (data.success) {
-                loadServicesList();
-                loadAndRenderServices();
-            } else {
-                alert('Failed to reorder: ' + (data.error || 'Unknown'));
-            }
-        })
-        .catch(err => {
-            alert('Error reordering: ' + err.message);
-        });
+    performReorder({ id: id, dir: dir });
 }
 
 function reorderServiceTo(id, toIndex) {
-    callServiceAPI({ action: 'reorder_service', id: id, toIndex: toIndex })
+    performReorder({ id: id, toIndex: toIndex });
+}
+
+function performReorder(params) {
+    const body = Object.assign({ action: 'reorder_service' }, params);
+    callServiceAPI(body)
         .then(data => {
             if (data.success) {
                 loadServicesList();
@@ -973,10 +966,6 @@ function loadAndRenderServices() {
 // ==================== Initialization ====================
 document.addEventListener('DOMContentLoaded', function() {
     
-    // --- Mobile menu button ---
-    const mobileBtn = document.querySelector('.mobile-menu-btn');
-    if (mobileBtn) mobileBtn.addEventListener('click', toggleMobileMenu);
-
     // --- Load service cards dynamically ---
     loadAndRenderServices();
 

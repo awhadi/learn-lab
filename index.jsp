@@ -58,11 +58,10 @@
     <header>
         <div class="header-inner">
             <div class="left">
-                <div class="logo" id="logoMenuBtn">
+                <div class="logo">
                     <a href="<%= baseUrl %>/"><img src="awhadi-online.webp" alt="awhadi.online"></a>
                     <span class="logo-version-badge" id="logoVersionBadge"><%= appVersion %></span>
                 </div>
-                <button class="mobile-menu-btn" style="display:none;"><i class="fas fa-bars"></i></button>
             </div>
             <div style="display:flex;align-items:center;gap:16px;">
                 <span class="time-display" id="time"></span>
@@ -234,7 +233,10 @@
             var TYPES = ['static', 'systemctl', 'docker-compose'];
             var ACTIONS = ['status', 'start', 'stop', 'restart', 'logs'];
             var unsafe = /<\s*(script|iframe|object|embed)|javascript:|data:text\/html/i;
-            var handler = /\bon(click|dblclick|load|error|mouse[a-z]*|key[a-z]*|focus|blur|submit|change|input|toggle|animation[a-z]*|transition[a-z]*)\s*=/i;
+            // Matches any "onXxx=" attribute rather than an enumerated list, so a
+            // handler name this list doesn't know about (onwheel, onpointerdown,
+            // oncontextmenu, ...) can't slip through.
+            var handler = /\bon[a-z]{2,32}\s*=/i;
 
             function badUrl(u) {
                 if (typeof u !== 'string' || !u.trim()) return true;
@@ -304,11 +306,12 @@
         // Tells the truth about the deployed server file, so a stale service_api.jsp
         // cannot masquerade as a broken import. A current file answers "No
         // configuration content provided" when asked for import_services without a
-        // body; an older one answers "Missing service or action".
+        // body; an older one answers "Missing service or action". Sent as POST
+        // (not GET) because the server now refuses this action on GET outright.
         window.labCheckImportSupport = function () {
             var note = document.getElementById('settingsServerNote');
             if (!note) return;
-            fetch('<%= request.getContextPath() %>/service_api.jsp?action=import_services&t=' + Date.now(), { cache: 'no-store' })
+            fetch('<%= request.getContextPath() %>/service_api.jsp?action=import_services&t=' + Date.now(), { method: 'POST', cache: 'no-store' })
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
                     var ok = !!(d && /No configuration content/i.test(d.error || ''));
@@ -376,9 +379,10 @@
 
                 // A current service_api.jsp knows import_services and answers "No
                 // configuration content provided" to a body-less probe; an older one
-                // falls through to "Missing service or action".
+                // falls through to "Missing service or action". Sent as POST since
+                // the server now refuses this action outright on GET.
                 function probeImportAction() {
-                    return fetch(apiUrl + '?action=import_services&t=' + Date.now(), { cache: 'no-store' })
+                    return fetch(apiUrl + '?action=import_services&t=' + Date.now(), { method: 'POST', cache: 'no-store' })
                         .then(function (r) { return r.json(); })
                         .catch(function () { return null; });
                 }
