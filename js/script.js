@@ -420,82 +420,14 @@ function toggleServiceVisibility(id) {
         });
 }
 
-function exportSettings() {
-    callServiceAPI({ action: 'list_services' })
-        .then(data => {
-            if (!data.success || !data.config) {
-                alert('Could not read the current settings.');
-                return;
-            }
-            const pad = n => String(n).padStart(2, '0');
-            const d = new Date();
-            const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-            const blob = new Blob([JSON.stringify(data.config, null, 2)], { type: 'application/json' });
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = `lab-services-${stamp}.json`;
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            setTimeout(() => URL.revokeObjectURL(link.href), 2000);
-        })
-        .catch(err => alert('Could not read the current settings: ' + err.message));
-}
-
-function importSettingsFile(file) {
-    const reader = new FileReader();
-    reader.onload = () => {
-        let parsed;
-        try {
-            parsed = JSON.parse(String(reader.result || ''));
-        } catch (e) {
-            alert('That file is not valid JSON.');
-            return;
-        }
-        if (!parsed || !Array.isArray(parsed.services)) {
-            alert('That file does not contain a service list.');
-            return;
-        }
-        if (!confirm('Load settings from "' + file.name + '"?\n\nThis replaces the current service list. A backup of the current settings is kept on the server.')) {
-            return;
-        }
-        callServiceAPI({ action: 'import_services', content: JSON.stringify(parsed) })
-            .then(data => {
-                if (data.success) {
-                    alert('Settings loaded.');
-                    loadServicesList();
-                    loadAndRenderServices();
-                } else {
-                    alert('Load failed: ' + (data.error || 'Unknown error'));
-                }
-            })
-            .catch(err => alert('Load failed: ' + err.message));
-    };
-    reader.onerror = () => alert('Could not read the selected file.');
-    reader.readAsText(file);
-}
-
-// Toolbar actions are wired by delegation at document level so they keep
-// working even if part of the page initialisation is skipped or the markup
-// is re-rendered.
+// Reset is wired by delegation so it keeps working even if part of the page
+// initialisation is skipped. Export is a plain link and Import is handled
+// inline in index.jsp, so neither depends on this file.
 document.addEventListener('click', function(e) {
-    const el = (e.target && e.target.closest) ? e.target.closest('#resetServicesBtn, #exportSettingsBtn, #importSettingsBtn') : null;
+    const el = (e.target && e.target.closest) ? e.target.closest('#resetServicesBtn') : null;
     if (!el) return;
     e.preventDefault();
-    if (el.id === 'resetServicesBtn') {
-        resetServicesToDefault();
-    } else if (el.id === 'exportSettingsBtn') {
-        exportSettings();
-    } else if (el.id === 'importSettingsBtn') {
-        const input = document.getElementById('importSettingsFile');
-        if (input) input.click();
-    }
-});
-document.addEventListener('change', function(e) {
-    if (e.target && e.target.id === 'importSettingsFile' && e.target.files && e.target.files[0]) {
-        importSettingsFile(e.target.files[0]);
-        e.target.value = '';
-    }
+    resetServicesToDefault();
 });
 
 function resetServicesToDefault() {

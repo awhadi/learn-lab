@@ -407,10 +407,20 @@
     if (action != null && (action.equals("list_services") || action.equals("add_service") ||
         action.equals("update_service") || action.equals("delete_service") || action.equals("toggle_visible") ||
         action.equals("reorder_service") || action.equals("batch_status") || action.equals("reset_services")
-        || action.equals("read_compose_file") || action.equals("import_services"))) {
+        || action.equals("read_compose_file") || action.equals("import_services") || action.equals("export_settings"))) {
 
         try {
             String jsonConfig = readConfigFile(configPath);
+
+            if ("export_settings".equals(action)) {
+                // Plain file download: works without any client-side JavaScript,
+                // so a proxy-cached script.js cannot break it.
+                String exportStamp = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss").format(new java.util.Date());
+                response.setContentType("application/json; charset=UTF-8");
+                response.setHeader("Content-Disposition", "attachment; filename=\"lab-services-" + exportStamp + ".json\"");
+                out.print(readConfigFile(configPath));
+                return;
+            }
 
             if ("reset_services".equals(action)) {
                 // Restore the shipped default config snapshot (see WEB-INF/services.default.json).

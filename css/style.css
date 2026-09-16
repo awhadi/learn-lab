@@ -1687,6 +1687,10 @@ input:checked + .toggle-slider:before {
     padding: 6px 10px;
     font-size: 12px;
 }
+.settings-toolbar-right label.btn {
+    cursor: pointer;
+    margin: 0;
+}
 
 @media (max-width: 768px) {
     .settings-toolbar-right {

@@ -101,9 +101,11 @@
                     <button class="btn btn-primary" id="addServiceBtn"><i class="fas fa-plus"></i> Add Service</button>
                     <div class="settings-toolbar-right">
                         <button class="btn btn-secondary" id="resetServicesBtn" title="Restore the default service list and settings"><i class="fas fa-undo-alt"></i> Reset to default</button>
-                        <button class="btn btn-secondary" id="exportSettingsBtn" title="Download the current settings as a JSON file"><i class="fas fa-download"></i> Export settings</button>
-                        <button class="btn btn-secondary" id="importSettingsBtn" title="Load settings from a saved JSON file"><i class="fas fa-upload"></i> Import settings</button>
-                        <input type="file" id="importSettingsFile" accept=".json,application/json" style="display:none">
+                        <a class="btn btn-secondary" id="exportSettingsLink" href="/service_api.jsp?action=export_settings" title="Download the current settings as a JSON file"><i class="fas fa-download"></i> Export settings</a>
+                        <label class="btn btn-secondary" id="importSettingsLabel" title="Load settings from a saved JSON file">
+                            <i class="fas fa-upload"></i> Import settings
+                            <input type="file" id="importSettingsFile" accept=".json,application/json" style="display:none" onchange="labImportSettings(this)">
+                        </label>
                     </div>
                 </div>
                 <div class="services-list" id="servicesList"></div>
@@ -210,6 +212,57 @@
         window.SERVICES_CONFIG = {
             baseUrl: '<%= baseUrl %>'
         };
+
+        // Import is handled inline (not in script.js) so it keeps working even
+        // when a proxy serves a cached script.js to clients.
+        function labImportSettings(input) {
+            var file = input && input.files && input.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function () {
+                var parsed;
+                try {
+                    parsed = JSON.parse(String(reader.result || ''));
+                } catch (e) {
+                    alert('That file is not valid JSON.');
+                    input.value = '';
+                    return;
+                }
+                if (!parsed || !Array.isArray(parsed.services)) {
+                    alert('That file does not contain a service list.');
+                    input.value = '';
+                    return;
+                }
+                if (!confirm('Load settings from "' + file.name + '"?\n\nThis replaces the current service list. A backup of the current settings is kept on the server.')) {
+                    input.value = '';
+                    return;
+                }
+                var body = new URLSearchParams();
+                body.set('action', 'import_services');
+                body.set('content', JSON.stringify(parsed));
+                fetch('/service_api.jsp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                    body: body
+                })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        if (d && d.success) {
+                            alert('Settings loaded.');
+                            window.location.reload();
+                        } else {
+                            alert('Load failed: ' + ((d && d.error) || 'unknown error'));
+                        }
+                    })
+                    .catch(function (e) { alert('Load failed: ' + e.message); })
+                    .finally(function () { input.value = ''; });
+            };
+            reader.onerror = function () {
+                alert('Could not read the selected file.');
+                input.value = '';
+            };
+            reader.readAsText(file);
+        }
     </script>
     <script src="/js/script.js?v=<%= appVersion %>-<%= System.currentTimeMillis() %>"></script>
 </body>
