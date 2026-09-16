@@ -224,6 +224,82 @@
             baseUrl: '<%= baseUrl %>'
         };
 
+        // Validates an uploaded settings file before it is allowed to replace the
+        // server config. Returns a list of reasons; an empty list means it is safe
+        // to import. The server repeats these checks (see service_api.jsp), because
+        // a direct POST never goes through this page.
+        function validateSettingsFile(cfg) {
+            var problems = [];
+            var TYPES = ['static', 'systemctl', 'docker-compose'];
+            var ACTIONS = ['status', 'start', 'stop', 'restart', 'logs'];
+            var unsafe = /<\s*(script|iframe|object|embed)|javascript:|data:text\/html/i;
+            var handler = /\bon(click|dblclick|load|error|mouse[a-z]*|key[a-z]*|focus|blur|submit|change|input|toggle|animation[a-z]*|transition[a-z]*)\s*=/i;
+
+            function badUrl(u) {
+                if (typeof u !== 'string' || !u.trim()) return true;
+                if (/^https?:\/\//i.test(u.trim())) return false;   // explicit http(s)
+                if (/^[a-z][a-z0-9+.-]*:/i.test(u.trim())) return true; // any other scheme
+                return false;                                       // relative path
+            }
+            function plainText(v, max) {
+                return typeof v === 'string' && v.trim() !== '' && v.length <= max && !/[<>]/.test(v);
+            }
+
+            if (cfg.services.length > 200) problems.push('more than 200 services');
+            var seen = {};
+            cfg.services.forEach(function (s, i) {
+                var who = 'service ' + (i + 1) + (s && typeof s.name === 'string' && s.name ? ' ("' + s.name + '")' : '');
+                if (!s || typeof s !== 'object' || Array.isArray(s)) { problems.push(who + ' is not an object'); return; }
+                if (typeof s.id !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(s.id)) {
+                    problems.push(who + ': id must be a lowercase slug (letters, digits, - or _)');
+                } else if (seen[s.id]) {
+                    problems.push(who + ': duplicate id "' + s.id + '"');
+                } else {
+                    seen[s.id] = true;
+                }
+                if (!plainText(s.name, 80)) problems.push(who + ': name must be plain text, 1-80 characters');
+                if (TYPES.indexOf(s.type) === -1) problems.push(who + ': type must be static, systemctl or docker-compose');
+                if (s.icon != null && !/^fa[bsr] fa-[a-z0-9-]{1,40}$/.test(String(s.icon))) problems.push(who + ': icon must look like "fas fa-cube"');
+                if (s.description != null) {
+                    if (typeof s.description !== 'string' || s.description.length > 20000) problems.push(who + ': description must be text under 20000 characters');
+                    else if (unsafe.test(s.description) || handler.test(s.description)) problems.push(who + ': description contains script markup or an inline event handler');
+                }
+                if (s.type === 'systemctl' && !/^[A-Za-z0-9@._:-]{1,64}$/.test(String(s.service || ''))) {
+                    problems.push(who + ': systemctl services need a valid "service" unit name');
+                }
+                if (s.type === 'docker-compose' && (typeof s.composePath !== 'string' || s.composePath.charAt(0) !== '/' || s.composePath.indexOf('..') !== -1)) {
+                    problems.push(who + ': docker-compose services need an absolute "composePath" without ".."');
+                }
+                if (s.openUrl != null && badUrl(s.openUrl)) problems.push(who + ': openUrl must be an http(s) URL or a relative path');
+                if (s.links != null) {
+                    if (!Array.isArray(s.links) || s.links.length > 10) {
+                        problems.push(who + ': links must be an array of at most 10 entries');
+                    } else {
+                        s.links.forEach(function (l) {
+                            if (!l || typeof l !== 'object' || badUrl(l.url)) problems.push(who + ': every link needs an http(s) or relative url');
+                            else if (l.text != null && !plainText(l.text, 60)) problems.push(who + ': link text must be plain text under 60 characters');
+                        });
+                    }
+                }
+                ['visible', 'manageable'].forEach(function (k) {
+                    if (s[k] != null && typeof s[k] !== 'boolean') problems.push(who + ': ' + k + ' must be true or false');
+                });
+                if (s.actions != null) {
+                    if (!Array.isArray(s.actions)) problems.push(who + ': actions must be an array');
+                    else s.actions.forEach(function (a) { if (ACTIONS.indexOf(a) === -1) problems.push(who + ': unknown action "' + a + '"'); });
+                }
+            });
+
+            var st = cfg.settings;
+            if (st != null) {
+                if (typeof st !== 'object' || Array.isArray(st)) problems.push('settings must be an object');
+                else if (st.composeBasePath != null && (typeof st.composeBasePath !== 'string' || st.composeBasePath.charAt(0) !== '/' || st.composeBasePath.indexOf('..') !== -1)) {
+                    problems.push('settings.composeBasePath must be an absolute path without ".."');
+                }
+            }
+            return problems;
+        }
+
         // Import is handled inline (not in script.js) so it keeps working even
         // when a proxy serves a cached script.js to clients.
         function labImportSettings(input) {
@@ -244,30 +320,82 @@
                     input.value = '';
                     return;
                 }
+                var problems = validateSettingsFile(parsed);
+                if (problems.length) {
+                    alert('That settings file was not imported:\n\n- ' + problems.slice(0, 12).join('\n- ')
+                        + (problems.length > 12 ? '\n- ...and ' + (problems.length - 12) + ' more' : '')
+                        + '\n\nNothing was changed.');
+                    input.value = '';
+                    return;
+                }
                 if (!confirm('Load settings from "' + file.name + '"?\n\nThis replaces the current service list. A backup of the current settings is kept on the server.')) {
                     input.value = '';
                     return;
                 }
-                var body = new URLSearchParams();
-                body.set('action', 'import_services');
-                body.set('content', JSON.stringify(parsed));
-                fetch('/service_api.jsp', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-                    body: body
-                })
-                    .then(function (r) { return r.json(); })
+                var payload = JSON.stringify(parsed);
+                var apiUrl = '<%= request.getContextPath() %>/service_api.jsp';
+
+                // The action travels in the query string as well as the body, so the
+                // server can still tell us which of the two things went wrong when it
+                // answers "Missing service or action": an old file, or a dropped body.
+                function postImport() {
+                    var body = new URLSearchParams();
+                    body.set('content', payload);
+                    return fetch(apiUrl + '?action=import_services&t=' + Date.now(), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+                        credentials: 'same-origin',
+                        cache: 'no-store',
+                        body: body
+                    }).then(function (r) {
+                        return r.json().catch(function () { return { success: false, error: 'HTTP ' + r.status }; });
+                    });
+                }
+
+                // A current service_api.jsp knows import_services and answers "No
+                // configuration content provided" to a body-less probe; an older one
+                // falls through to "Missing service or action".
+                function probeImportAction() {
+                    return fetch(apiUrl + '?action=import_services&t=' + Date.now(), { cache: 'no-store' })
+                        .then(function (r) { return r.json(); })
+                        .catch(function () { return null; });
+                }
+
+                function reportFailure(d) {
+                    var msg = (d && d.error) || 'unknown error';
+                    if (/No configuration content/i.test(msg)) {
+                        alert('Load failed: the server received the request but no file data.\n\n'
+                            + 'A proxy or filter in front of Tomcat is dropping the upload body, or the file was too large.\n'
+                            + 'Your settings were NOT changed.');
+                        return;
+                    }
+                    if (/Missing service or action/i.test(msg)) {
+                        probeImportAction().then(function (p) {
+                            if (p && /No configuration content/i.test(p.error || '')) {
+                                alert('Load failed: this server does support the import action, but it did not receive the file data.\n\n'
+                                    + 'A proxy or filter in front of Tomcat is dropping the upload body. Your settings were NOT changed.');
+                            } else {
+                                alert('Load failed: this server\'s service_api.jsp is out of date.\n\n'
+                                    + 'Import needs the current service_api.jsp (<%= appVersion %>), which is the only file that can write the settings.\n'
+                                    + 'Copy it into the Tomcat webapp, e.g.\n'
+                                    + '  cp service_api.jsp /opt/tomcat/webapps/ROOT/\n'
+                                    + 'then reload this page.\n\n'
+                                    + 'Your settings were NOT changed.');
+                            }
+                        });
+                        return;
+                    }
+                    alert('Load failed: ' + msg);
+                }
+
+                postImport()
                     .then(function (d) {
                         if (d && d.success) {
                             alert('Settings loaded.');
                             window.location.reload();
-                        } else {
-                            var msg = (d && d.error) || 'unknown error';
-                            if (/Missing service or action/i.test(msg)) {
-                                msg = 'the server\'s service_api.jsp is out of date - deploy the current service_api.jsp (import_services action missing)';
-                            }
-                            alert('Load failed: ' + msg);
+                            return;
                         }
+                        reportFailure(d);
                     })
                     .catch(function (e) { alert('Load failed: ' + e.message); })
                     .finally(function () { input.value = ''; });

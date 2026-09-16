@@ -197,6 +197,52 @@
         return sb.toString();
     }
 
+    // Validates an uploaded settings file before it replaces the live config.
+    // Returns null when the content is a settings file we are willing to serve,
+    // or a human-readable reason when it is not. Checks run on a whitespace-free
+    // copy, so formatting differences cannot hide anything; JSON escapes its own
+    // quotes, so a description mentioning "type":"x" cannot be mistaken for a
+    // real field.
+    private String validateSettingsImport(String content) {
+        String flat = content.replaceAll("\\s+", "");
+        String lower = flat.toLowerCase();
+        if (flat.length() > 1048576) return "Configuration too large (1 MB limit)";
+        for (String bad : new String[]{"<script", "<iframe", "<object", "<embed", "javascript:", "data:text/html", "srcdoc"}) {
+            if (lower.contains(bad)) return "Refused: the file contains " + bad + "";
+        }
+        java.util.regex.Matcher handler = java.util.regex.Pattern.compile(
+            "\\bon(click|dblclick|load|error|mouse[a-z]*|key[a-z]*|focus|blur|submit|change|input|toggle|animation[a-z]*|transition[a-z]*)\\s*=").matcher(content);
+        if (handler.find()) return "Refused: the file contains an inline event handler (" + handler.group() + ")";
+
+        java.util.regex.Pattern idRe = java.util.regex.Pattern.compile("\\\"id\\\":\\\"([^\\\"]*)\\\"");
+        java.util.regex.Pattern typeRe = java.util.regex.Pattern.compile("\\\"type\\\":\\\"([^\\\"]*)\\\"");
+        Set<String> ids = new HashSet<String>();
+        int count = 0;
+        java.util.regex.Matcher m = idRe.matcher(flat);
+        while (m.find()) {
+            String id = m.group(1);
+            count++;
+            if (count > 200) return "Refused: more than 200 services";
+            if (!id.matches("[a-z0-9][a-z0-9_-]{0,63}")) return "Refused: unsafe service id \"" + id + "\"";
+            if (!ids.add(id)) return "Refused: duplicate service id \"" + id + "\"";
+        }
+        if (count == 0) return "Refused: no services found in the file";
+        m = typeRe.matcher(flat);
+        while (m.find()) {
+            String t = m.group(1);
+            if (!t.equals("static") && !t.equals("systemctl") && !t.equals("docker-compose")) {
+                return "Refused: unknown service type \"" + t + "\"";
+            }
+        }
+        java.util.regex.Matcher base = java.util.regex.Pattern.compile(
+            "\\\"composeBasePath\\\":\\\"([^\\\"]*)\\\"").matcher(flat);
+        while (base.find()) {
+            String p = base.group(1);
+            if (!p.startsWith("/") || p.contains("..")) return "Refused: composeBasePath must be an absolute path without \"..\"";
+        }
+        return null;
+    }
+
     private String makeId(String name) {
         String id = name.toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
         return id + "-" + System.currentTimeMillis();
@@ -453,6 +499,15 @@
                 if (impArrStart == -1 || findArrayEnd(content, impArrStart) == -1) {
                     logProblem("import_services: rejected content without a services array", null);
                     out.print("{\"success\":false,\"error\":\"Invalid settings file: no 'services' array found\"}");
+                    return;
+                }
+                // The file replaces the live config, so refuse anything unsafe or
+                // malformed instead of writing it (the browser validates too, this
+                // is the check that cannot be bypassed by posting directly).
+                String importProblem = validateSettingsImport(content);
+                if (importProblem != null) {
+                    logProblem("import_services: rejected file: " + importProblem, null);
+                    out.print("{\"success\":false,\"error\":\"" + escapeJsonStr(importProblem) + "\"}");
                     return;
                 }
                 synchronized (CONFIG_LOCK) {
