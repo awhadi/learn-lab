@@ -87,13 +87,20 @@ function checkDisclaimerStatus() {
 
 // ==================== API Functions ====================
 function callServiceAPI(params) {
+    const method = params.action === 'list_services' ? 'GET' : (params.action === 'add_service' || params.action === 'update_service' || params.action === 'delete_service' ? 'POST' : (params.action === 'status' || params.action === 'logs' ? 'GET' : 'POST'));
     const qs = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
         qs.set(key, value);
     }
+    // POST parameters travel in the request body (settings import can be large).
     const q = qs.toString();
-    const url = q ? `/service_api.jsp?${q}` : '/service_api.jsp';
-    return fetch(url, { method: params.action === 'list_services' ? 'GET' : (params.action === 'add_service' || params.action === 'update_service' || params.action === 'delete_service' ? 'POST' : (params.action === 'status' || params.action === 'logs' ? 'GET' : 'POST')) })
+    const url = (method === 'GET' && q) ? `/service_api.jsp?${q}` : '/service_api.jsp';
+    const init = { method: method };
+    if (method === 'POST') {
+        init.headers = { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' };
+        init.body = q;
+    }
+    return fetch(url, init)
         .then(r => {
             if (!r.ok) {
                 const httpErr = new Error('HTTP ' + r.status + ' ' + r.statusText);
@@ -411,6 +418,61 @@ function toggleServiceVisibility(id) {
             alert('Error updating visibility: ' + err.message);
             loadServicesList();
         });
+}
+
+function exportSettings() {
+    callServiceAPI({ action: 'list_services' })
+        .then(data => {
+            if (!data.success || !data.config) {
+                alert('Could not read the current settings.');
+                return;
+            }
+            const pad = n => String(n).padStart(2, '0');
+            const d = new Date();
+            const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+            const blob = new Blob([JSON.stringify(data.config, null, 2)], { type: 'application/json' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `lab-services-${stamp}.json`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(link.href), 2000);
+        })
+        .catch(err => alert('Could not read the current settings: ' + err.message));
+}
+
+function importSettingsFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+        let parsed;
+        try {
+            parsed = JSON.parse(String(reader.result || ''));
+        } catch (e) {
+            alert('That file is not valid JSON.');
+            return;
+        }
+        if (!parsed || !Array.isArray(parsed.services)) {
+            alert('That file does not contain a service list.');
+            return;
+        }
+        if (!confirm('Load settings from "' + file.name + '"?\n\nThis replaces the current service list. A backup of the current settings is kept on the server.')) {
+            return;
+        }
+        callServiceAPI({ action: 'import_services', content: JSON.stringify(parsed) })
+            .then(data => {
+                if (data.success) {
+                    alert('Settings loaded.');
+                    loadServicesList();
+                    loadAndRenderServices();
+                } else {
+                    alert('Load failed: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => alert('Load failed: ' + err.message));
+    };
+    reader.onerror = () => alert('Could not read the selected file.');
+    reader.readAsText(file);
 }
 
 function resetServicesToDefault() {
@@ -944,6 +1006,21 @@ document.addEventListener('DOMContentLoaded', function() {
     const resetServicesBtn = document.getElementById('resetServicesBtn');
     if (resetServicesBtn) {
         resetServicesBtn.addEventListener('click', resetServicesToDefault);
+    }
+
+    // --- Save / Load settings (local file backup) ---
+    const exportSettingsBtn = document.getElementById('exportSettingsBtn');
+    if (exportSettingsBtn) {
+        exportSettingsBtn.addEventListener('click', exportSettings);
+    }
+    const importSettingsBtn = document.getElementById('importSettingsBtn');
+    const importSettingsFileInput = document.getElementById('importSettingsFile');
+    if (importSettingsBtn && importSettingsFileInput) {
+        importSettingsBtn.addEventListener('click', () => importSettingsFileInput.click());
+        importSettingsFileInput.addEventListener('change', function() {
+            if (this.files && this.files[0]) importSettingsFile(this.files[0]);
+            this.value = '';
+        });
     }
 
     // --- Service form type change ---

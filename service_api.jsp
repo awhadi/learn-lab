@@ -407,7 +407,7 @@
     if (action != null && (action.equals("list_services") || action.equals("add_service") ||
         action.equals("update_service") || action.equals("delete_service") || action.equals("toggle_visible") ||
         action.equals("reorder_service") || action.equals("batch_status") || action.equals("reset_services")
-        || action.equals("read_compose_file"))) {
+        || action.equals("read_compose_file") || action.equals("import_services"))) {
 
         try {
             String jsonConfig = readConfigFile(configPath);
@@ -425,6 +425,48 @@
                     writeConfigFile(configPath, defaultCfg);
                 }
                 out.print("{\"success\":true,\"message\":\"Services reset to defaults\"}");
+                return;
+            }
+
+            if ("import_services".equals(action)) {
+                // Restore a settings file previously saved with "Save settings".
+                String content = request.getParameter("content");
+                if (content == null || content.trim().isEmpty()) {
+                    out.print("{\"success\":false,\"error\":\"No configuration content provided\"}");
+                    return;
+                }
+                if (content.length() > 1048576) {
+                    out.print("{\"success\":false,\"error\":\"Configuration too large (1 MB limit)\"}");
+                    return;
+                }
+                int impArrStart = findArrayStart(content);
+                if (impArrStart == -1 || findArrayEnd(content, impArrStart) == -1) {
+                    logProblem("import_services: rejected content without a services array", null);
+                    out.print("{\"success\":false,\"error\":\"Invalid settings file: no 'services' array found\"}");
+                    return;
+                }
+                synchronized (CONFIG_LOCK) {
+                    try {
+                        String stamp = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss").format(new java.util.Date());
+                        Path bak = Paths.get(application.getRealPath("/WEB-INF"), "services.backup-" + stamp + ".json");
+                        Files.write(bak, readConfigFile(configPath).getBytes(StandardCharsets.UTF_8));
+                        logProblem("import_services: previous settings backed up to " + bak, null);
+                        java.io.File dir = new java.io.File(application.getRealPath("/WEB-INF"));
+                        java.io.File[] baks = dir.listFiles(new java.io.FilenameFilter() {
+                            public boolean accept(java.io.File d, String n) { return n.startsWith("services.backup-"); }
+                        });
+                        if (baks != null && baks.length > 10) {
+                            java.util.Arrays.sort(baks, new java.util.Comparator<java.io.File>() {
+                                public int compare(java.io.File a, java.io.File b) { return Long.compare(a.lastModified(), b.lastModified()); }
+                            });
+                            for (int i = 0; i < baks.length - 10; i++) baks[i].delete();
+                        }
+                    } catch (Exception be) {
+                        logProblem("import_services: backup failed (continuing)", be);
+                    }
+                    writeConfigFile(configPath, content);
+                }
+                out.print("{\"success\":true,\"message\":\"Settings imported\"}");
                 return;
             }
 

@@ -100,6 +100,9 @@
                 <div class="settings-toolbar">
                     <button class="btn btn-primary" id="addServiceBtn"><i class="fas fa-plus"></i> Add Service</button>
                     <button class="btn btn-secondary" id="resetServicesBtn" title="Restore the default service list and settings"><i class="fas fa-undo-alt"></i> Reset to default</button>
+                    <button class="btn btn-secondary" id="exportSettingsBtn" title="Download the current settings as a JSON file"><i class="fas fa-download"></i> Save settings</button>
+                    <button class="btn btn-secondary" id="importSettingsBtn" title="Load settings from a saved JSON file"><i class="fas fa-upload"></i> Load settings</button>
+                    <input type="file" id="importSettingsFile" accept=".json,application/json" style="display:none">
                 </div>
                 <div class="services-list" id="servicesList"></div>
             </div>
