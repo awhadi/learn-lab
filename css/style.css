@@ -115,6 +115,104 @@ header {
     background: #4f46e5;
 }
 
+.logo-text-brand {
+    color: var(--navbar-text);
+    font-size: 20px;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+/* Logo Dropdown Menu */
+.logo-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 8px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    min-width: 200px;
+    display: none;
+    z-index: 1000;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+}
+
+.logo-dropdown.show {
+    display: block;
+    animation: dropdownFadeIn 0.2s ease;
+}
+
+@keyframes dropdownFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.logo-dropdown a {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    color: var(--text);
+    text-decoration: none;
+    transition: all 0.2s;
+    font-size: 14px;
+}
+
+.logo-dropdown a:hover {
+    background: var(--accent);
+    color: white;
+}
+
+.logo-dropdown a i {
+    width: 20px;
+    font-size: 14px;
+}
+
+.dropdown-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+}
+
+/* Navigation */
+.nav-links {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.nav-links a {
+    color: rgba(255,255,255,0.8);
+    text-decoration: none;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.nav-links a:hover {
+    color: #fff;
+    background: rgba(255,255,255,0.1);
+}
+
+.nav-links i {
+    font-size: 14px;
+}
+
 .time-display {
     color: rgba(255,255,255,0.7);
     font-size: 13px;
@@ -186,8 +284,45 @@ input:checked + .switch::after {
     background: rgba(255,255,255,0.2);
 }
 
+/* ================= Mobile Menu ================= */
+.mobile-menu-btn {
+    display: none;
+    background: none;
+    border: none;
+    color: var(--navbar-text);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 8px;
+}
+
 /* ================= Responsive ================= */
 @media (max-width: 1024px) {
+    .nav-links {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: var(--navbar-bg);
+        flex-direction: column;
+        padding: 16px;
+        gap: 4px;
+        border-top: 1px solid var(--border);
+    }
+
+    .nav-links.active {
+        display: flex;
+    }
+
+    .nav-links a {
+        padding: 12px;
+        width: 100%;
+    }
+
+    .mobile-menu-btn {
+        display: block;
+    }
+
     .time-display {
         display: none;
     }
@@ -201,6 +336,9 @@ input:checked + .switch::after {
         display: inline-flex;
         align-items: center;
         justify-content: center;
+    }
+    .logo-text-brand {
+        font-size: 16px;
     }
 }
 
@@ -521,6 +659,23 @@ footer a {
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
 }
 
+.reset-notice {
+    background: rgba(255, 204, 0, 0.15);
+    border: 2px solid #ffcc00;
+    border-radius: 10px;
+    padding: 20px;
+    margin: 25px 0;
+    font-size: 15px;
+    text-align: center;
+}
+
+.reset-notice strong {
+    color: #ffcc00;
+    display: block;
+    margin-bottom: 8px;
+    font-size: 16px;
+}
+
 .disclaimer-link {
     color: var(--link-color);
     cursor: pointer;
@@ -553,6 +708,108 @@ body.disclaimer-open main {
 .disclaimer-content::-webkit-scrollbar-thumb {
     background: #ffcc00;
     border-radius: 4px;
+}
+
+/* Restart Confirmation Modal */
+.restart-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 20000;
+    justify-content: center;
+    align-items: center;
+    backdrop-filter: blur(4px);
+}
+
+.restart-modal-content {
+    background: var(--card-bg);
+    border-radius: 16px;
+    max-width: 450px;
+    width: 90%;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    overflow: hidden;
+    animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+    from {
+        transform: translateY(-50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.restart-modal-header {
+    background: linear-gradient(135deg, #f59e0b 0%, #dc2626 100%);
+    padding: 20px;
+    font-size: 18px;
+    font-weight: bold;
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.restart-modal-header i {
+    font-size: 24px;
+}
+
+.restart-modal-body {
+    padding: 24px;
+    color: var(--text);
+}
+
+.restart-modal-body p {
+    margin-bottom: 12px;
+}
+
+.restart-modal-body strong {
+    color: var(--accent);
+}
+
+.restart-modal-footer {
+    padding: 16px 24px;
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    border-top: 1px solid var(--border);
+}
+
+.restart-modal-footer button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-cancel {
+    background: var(--border);
+    color: var(--text);
+}
+
+.btn-cancel:hover {
+    background: #ef4444;
+    color: white;
+}
+
+.btn-confirm {
+    background: #10b981;
+    color: white;
+}
+
+.btn-confirm:hover {
+    background: #059669;
+    transform: translateY(-2px);
 }
 
 /* Loading Modal */
@@ -611,9 +868,29 @@ body.disclaimer-open main {
     margin-bottom: 8px;
 }
 
+.loading-subtext {
+    font-size: 13px;
+    color: var(--text);
+    opacity: 0.7;
+}
+
+[data-theme="dark"] .restart-modal-content {
+    background: var(--card-bg);
+}
+
+[data-theme="dark"] .btn-cancel {
+    background: #334155;
+    color: #e2e8f0;
+}
+
 /* Color accents */
 .text-accent { color: var(--link-color); }
 .text-warning { color: #f59e0b; }
+
+/* SVG Logo */
+#logo-infinity {
+    fill: var(--link-color);
+}
 
 /* ---------- Service Management Modal (moved from index.jsp) ---------- */
 .service-modal {
@@ -1346,15 +1623,6 @@ input:checked + .toggle-slider:before {
 }
 .service-form-content .form-group select {
     padding: 12px 38px 12px 12px;   /* keep room for the chevron drawn by the base rule */
-}
-.service-form-content .form-group select:disabled {
-    /* Some browsers shrink a disabled <select> back to native sizing even with
-       appearance:none, so pin a real height (not just min-height) here too —
-       this is the "Edit Service" state where the Type field is locked. */
-    height: 46px;
-    box-sizing: border-box;
-    -webkit-appearance: none;
-    appearance: none;
 }
 .service-form-content .form-group textarea {
     width: 100%;

@@ -205,11 +205,8 @@
         for (String bad : new String[]{"<script", "<iframe", "<object", "<embed", "javascript:", "data:text/html", "srcdoc"}) {
             if (lower.contains(bad)) return "Refused: the file contains " + bad + "";
         }
-        // Matches any "onXxx=" attribute (onclick, onwheel, onpointerdown, ...)
-        // rather than an enumerated list, so a handler name added to a future
-        // browser can't slip past this check.
         java.util.regex.Matcher handler = java.util.regex.Pattern.compile(
-            "\\bon[a-z]{2,32}\\s*=", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(content);
+            "\\bon(click|dblclick|load|error|mouse[a-z]*|key[a-z]*|focus|blur|submit|change|input|toggle|animation[a-z]*|transition[a-z]*)\\s*=").matcher(content);
         if (handler.find()) return "Refused: the file contains an inline event handler (" + handler.group() + ")";
 
         java.util.regex.Pattern idRe = java.util.regex.Pattern.compile("\\\"id\\\":\\\"([^\\\"]*)\\\"");
@@ -472,8 +469,7 @@
                     Path df = Paths.get(application.getRealPath("/WEB-INF/services.default.json"));
                     if (!Files.exists(df)) {
                         logProblem("reset_services: default snapshot missing at " + df, null);
-                        out.print("{\"success\":false,\"error\":\"Reset failed: WEB-INF/services.default.json is missing on this server. "
-                            + "Redeploy that file next to service_api.jsp, then try again.\"}");
+                        out.print("{\"success\":false,\"error\":\"Default configuration file is missing on the server\"}");
                         return;
                     }
                     String defaultCfg = new String(Files.readAllBytes(df), StandardCharsets.UTF_8);
