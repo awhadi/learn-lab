@@ -1159,17 +1159,25 @@ body.disclaimer-open main {
     border-color: var(--accent);
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
+.service-list-main {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+}
 .service-list-info {
     display: flex;
     align-items: center;
     gap: 16px;
     flex: 1;
+    min-width: 0;
 }
 .service-list-reorder {
     display: flex;
     flex-direction: column;
     gap: 4px;
     margin-right: 12px;
+    flex-shrink: 0;
 }
 .reorder-btn {
     border: none;
@@ -1194,13 +1202,20 @@ body.disclaimer-open main {
 }
 
 /* ================= Status Badges ================= */
+/* Badge + its action button(s), grouped as one centered unit next to the
+   service name/icon — separate from the toggle/edit/delete group. */
+.svc-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 12px;
+    flex-shrink: 0;
+}
 .svc-status-badge {
     font-size: 11px;
     font-weight: 600;
     padding: 2px 8px;
     border-radius: 12px;
-    margin-left: 8px;
-    vertical-align: middle;
 }
 .status-running {
     background: #22c55e15;
@@ -1228,6 +1243,11 @@ body.disclaimer-open main {
     align-items: center;
     justify-content: center;
     font-size: 20px;
+    flex-shrink: 0;
+}
+.service-list-details {
+    flex: 1;
+    min-width: 0;
 }
 .service-list-details h4 {
     margin: 0 0 4px 0;
@@ -1542,6 +1562,9 @@ input:checked + .toggle-slider:before {
         align-items: flex-start;
         gap: 12px;
     }
+    .service-list-main {
+        width: 100%;
+    }
     .service-list-actions {
         width: 100%;
         justify-content: flex-end;
@@ -1555,8 +1578,6 @@ input:checked + .toggle-slider:before {
     gap: 6px;
     flex-wrap: wrap;
     min-width: 0;
-    margin-left: 6px;
-    vertical-align: middle;
 }
 .svc-action-btn {
     border: none;
@@ -1606,11 +1627,6 @@ input:checked + .toggle-slider:before {
 .checkbox-label.disabled {
     opacity: 0.5;
     cursor: not-allowed;
-}
-@media (max-width: 768px) {
-    .svc-actions {
-        margin-left: 0;
-    }
 }
 
 /* ================= Service form: uniform field sizing ================= */
@@ -1665,9 +1681,29 @@ input:checked + .toggle-slider:before {
     .service-list-details h4 {
         font-size: 15px;
         line-height: 1.6;
+        /* Truncate instead of forcing the whole row to overflow — the status
+           badge/button next to it must stay visible on the same line. */
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
     }
     .service-list-details p {
         font-size: 12px;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+    /* Line 1 stays reorder + icon + name/type; if a status badge/button is
+       present there isn't room for it there too, so let it wrap onto its own
+       line rather than squeezing the name/type column until they wrap. */
+    .service-list-main {
+        flex-wrap: wrap;
+        row-gap: 6px;
+    }
+    .svc-status {
+        flex-basis: 100%;
+        margin-left: 0;
+        gap: 6px;
     }
     .svc-action-btn {
         padding: 5px 9px;

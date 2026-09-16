@@ -123,8 +123,6 @@ let currentEditingServiceId = null;
 let currentServices = [];
 // Core infra entries that must not be deletable from the dashboard.
 const DISABLED_DELETE_IDS = ['docker', 'tomcat-service'];
-// Infra rows that get explicit Start/Restart controls (Docker also Stop).
-const INFRA_CONTROL_IDS = ['docker', 'tomcat-service'];
 
 function openSettingsModal() {
     document.getElementById('settingsModal').style.display = 'flex';
@@ -173,23 +171,32 @@ function renderServicesList(services) {
         item.draggable = true;
         item.dataset.id = svc.id;
         const badgeHtml = isStatusType
-            ? ` <span class="svc-status-badge" data-svc="${escapeHtml(svc.id)}" id="svc-status-${escapeHtml(svc.id)}">…</span>`
+            ? `<span class="svc-status-badge" data-svc="${escapeHtml(svc.id)}" id="svc-status-${escapeHtml(svc.id)}">…</span>`
+            : '';
+        // Badge + action button are grouped together (status and the control
+        // for it belong side by side) and live as their own centered flex item,
+        // separate from both the title line and the toggle/edit/delete group.
+        const statusGroupHtml = isStatusType
+            ? `<span class="svc-status">${badgeHtml}<span class="svc-actions" id="svc-actions-${escapeHtml(svc.id)}" data-id="${escapeHtml(svc.id)}"></span></span>`
             : '';
         item.innerHTML = `
-            <div class="service-list-reorder">
-                <button class="reorder-btn btn-move-up" data-id="${escapeHtml(svc.id)}" title="Move up" ${index === 0 ? 'disabled' : ''}><i class="fas fa-chevron-up"></i></button>
-                <button class="reorder-btn btn-move-down" data-id="${escapeHtml(svc.id)}" title="Move down" ${index === services.length - 1 ? 'disabled' : ''}><i class="fas fa-chevron-down"></i></button>
-            </div>
-            <div class="service-list-info">
-                <div class="service-list-icon"><i class="${escapeHtml(svc.icon || 'fas fa-cube')}"></i></div>
-                <div class="service-list-details">
-                    <h4>${escapeHtml(svc.name)}${badgeHtml} <span class="svc-actions" id="svc-actions-${escapeHtml(svc.id)}" data-id="${escapeHtml(svc.id)}"></span></h4>
-                    <p>${escapeHtml(svc.type)} ${svc.manageable ? '• Manageable' : ''}</p>
+            <div class="service-list-main">
+                <div class="service-list-reorder">
+                    <button class="reorder-btn btn-move-up" data-id="${escapeHtml(svc.id)}" title="Move up" ${index === 0 ? 'disabled' : ''}><i class="fas fa-chevron-up"></i></button>
+                    <button class="reorder-btn btn-move-down" data-id="${escapeHtml(svc.id)}" title="Move down" ${index === services.length - 1 ? 'disabled' : ''}><i class="fas fa-chevron-down"></i></button>
                 </div>
+                <div class="service-list-info">
+                    <div class="service-list-icon"><i class="${escapeHtml(svc.icon || 'fas fa-cube')}"></i></div>
+                    <div class="service-list-details">
+                        <h4>${escapeHtml(svc.name)}</h4>
+                        <p>${escapeHtml(svc.type)} ${svc.manageable ? '• Manageable' : ''}</p>
+                    </div>
+                </div>
+                ${statusGroupHtml}
             </div>
             <div class="service-list-actions">
                 <label class="toggle-switch" title="${svc.visible ? 'Hide from main page (service keeps running)' : 'Show on main page (service keeps running)'}">
-                    <input type="checkbox" class="visibility-toggle" data-id="${escapeHtml(svc.id)}" data-visible="${svc.visible}" ${svc.visible ? 'checked' : ''}>
+                    <input type="checkbox" class="visibility-toggle" data-id="${escapeHtml(svc.id)}" data-visible="${escapeHtml(svc.visible)}" ${svc.visible ? 'checked' : ''}>
                     <span class="toggle-slider"></span>
                 </label>
                 <button class="text-btn btn-edit" data-id="${escapeHtml(svc.id)}" title="Edit ${escapeHtml(svc.name)}"><i class="fas fa-pencil-alt"></i> Edit</button>
@@ -332,15 +339,17 @@ function fetchAllStatuses() {
 function renderRowActions(svc, status) {
     const slot = document.getElementById('svc-actions-' + svc.id);
     if (!slot) return;
-    // Explicit controls are offered only for the Docker and Tomcat rows,
-    // not for every manageable service.
-    if (INFRA_CONTROL_IDS.indexOf(svc.id) === -1) { slot.innerHTML = ''; return; }
+    // Row actions apply to every manageable systemctl/docker-compose service,
+    // same as the main-page Manage modal; static services never get a slot
+    // rendered here at all (see renderServicesList's isStatusType check).
+    const isControllable = svc.manageable && (svc.type === 'systemctl' || svc.type === 'docker-compose');
+    if (!isControllable) { slot.innerHTML = ''; return; }
     const actions = Array.isArray(svc.actions) ? svc.actions : [];
     const buttons = [];
     if (status === 'running') {
         if (actions.indexOf('restart') !== -1) buttons.push({ a: 'restart', label: 'Restart', cls: 'btn-restart' });
-        // Stop is offered for Docker only; Tomcat must never be stopped.
-        if (svc.id === 'docker' && actions.indexOf('stop') !== -1) buttons.push({ a: 'stop', label: 'Stop', cls: 'btn-stop' });
+        // Tomcat must never be stopped from the dashboard (server also rejects it).
+        if (svc.id !== 'tomcat-service' && actions.indexOf('stop') !== -1) buttons.push({ a: 'stop', label: 'Stop', cls: 'btn-stop' });
     } else {
         // Stopped or unknown state: offer Start so the row stays actionable.
         if (actions.indexOf('start') !== -1) buttons.push({ a: 'start', label: 'Start', cls: 'btn-start' });
@@ -853,9 +862,16 @@ function fetchLogs(service) {
 
 // ==================== Helper Functions ====================
 function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    // Must also encode quotes: several call sites interpolate this into an
+    // HTML attribute (class="...", data-name="...", href="...", not just text
+    // content), and an unescaped " lets the value break out of the attribute.
+    if (text == null) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 // Sanitizes HTML that came from the (editable) service config before insertion.
