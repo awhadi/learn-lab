@@ -475,6 +475,29 @@ function importSettingsFile(file) {
     reader.readAsText(file);
 }
 
+// Toolbar actions are wired by delegation at document level so they keep
+// working even if part of the page initialisation is skipped or the markup
+// is re-rendered.
+document.addEventListener('click', function(e) {
+    const el = (e.target && e.target.closest) ? e.target.closest('#resetServicesBtn, #exportSettingsBtn, #importSettingsBtn') : null;
+    if (!el) return;
+    e.preventDefault();
+    if (el.id === 'resetServicesBtn') {
+        resetServicesToDefault();
+    } else if (el.id === 'exportSettingsBtn') {
+        exportSettings();
+    } else if (el.id === 'importSettingsBtn') {
+        const input = document.getElementById('importSettingsFile');
+        if (input) input.click();
+    }
+});
+document.addEventListener('change', function(e) {
+    if (e.target && e.target.id === 'importSettingsFile' && e.target.files && e.target.files[0]) {
+        importSettingsFile(e.target.files[0]);
+        e.target.value = '';
+    }
+});
+
 function resetServicesToDefault() {
     if (!confirm('Reset all services to the default settings?\n\nThis restores the original service list (names, descriptions, order, visibility) and removes any services you added or edited.')) {
         return;
@@ -1000,27 +1023,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const addServiceBtn = document.getElementById('addServiceBtn');
     if (addServiceBtn) {
         addServiceBtn.addEventListener('click', () => openServiceForm());
-    }
-
-    // --- Reset to default button ---
-    const resetServicesBtn = document.getElementById('resetServicesBtn');
-    if (resetServicesBtn) {
-        resetServicesBtn.addEventListener('click', resetServicesToDefault);
-    }
-
-    // --- Save / Load settings (local file backup) ---
-    const exportSettingsBtn = document.getElementById('exportSettingsBtn');
-    if (exportSettingsBtn) {
-        exportSettingsBtn.addEventListener('click', exportSettings);
-    }
-    const importSettingsBtn = document.getElementById('importSettingsBtn');
-    const importSettingsFileInput = document.getElementById('importSettingsFile');
-    if (importSettingsBtn && importSettingsFileInput) {
-        importSettingsBtn.addEventListener('click', () => importSettingsFileInput.click());
-        importSettingsFileInput.addEventListener('change', function() {
-            if (this.files && this.files[0]) importSettingsFile(this.files[0]);
-            this.value = '';
-        });
     }
 
     // --- Service form type change ---

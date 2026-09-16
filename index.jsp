@@ -26,7 +26,7 @@
     <link rel="icon" href="/favicon.ico?" />
     <link rel="stylesheet" href="/css/fontawesome-free/css/all.min.css">
     <script src="/js/vendor/purify.min.js"></script>
-    <link rel="stylesheet" href="/css/style.css?v=<%= appVersion %>">
+    <link rel="stylesheet" href="/css/style.css?v=<%= appVersion %>-<%= System.currentTimeMillis() %>">
 </head>
 <body>
     <div id="disclaimer">
@@ -99,10 +99,12 @@
             <div class="settings-modal-body">
                 <div class="settings-toolbar">
                     <button class="btn btn-primary" id="addServiceBtn"><i class="fas fa-plus"></i> Add Service</button>
-                    <button class="btn btn-secondary" id="resetServicesBtn" title="Restore the default service list and settings"><i class="fas fa-undo-alt"></i> Reset to default</button>
-                    <button class="btn btn-secondary" id="exportSettingsBtn" title="Download the current settings as a JSON file"><i class="fas fa-download"></i> Save settings</button>
-                    <button class="btn btn-secondary" id="importSettingsBtn" title="Load settings from a saved JSON file"><i class="fas fa-upload"></i> Load settings</button>
-                    <input type="file" id="importSettingsFile" accept=".json,application/json" style="display:none">
+                    <div class="settings-toolbar-right">
+                        <button class="btn btn-secondary" id="resetServicesBtn" title="Restore the default service list and settings"><i class="fas fa-undo-alt"></i> Reset to default</button>
+                        <button class="btn btn-secondary" id="exportSettingsBtn" title="Download the current settings as a JSON file"><i class="fas fa-download"></i> Export settings</button>
+                        <button class="btn btn-secondary" id="importSettingsBtn" title="Load settings from a saved JSON file"><i class="fas fa-upload"></i> Import settings</button>
+                        <input type="file" id="importSettingsFile" accept=".json,application/json" style="display:none">
+                    </div>
                 </div>
                 <div class="services-list" id="servicesList"></div>
             </div>
@@ -209,6 +211,6 @@
             baseUrl: '<%= baseUrl %>'
         };
     </script>
-    <script src="/js/script.js?v=<%= appVersion %>"></script>
+    <script src="/js/script.js?v=<%= appVersion %>-<%= System.currentTimeMillis() %>"></script>
 </body>
 </html>

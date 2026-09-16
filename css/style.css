@@ -1673,3 +1673,25 @@ input:checked + .toggle-slider:before {
     color: #ef4444;
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
+
+/* ================= Settings toolbar: compact right-aligned actions ================= */
+.settings-toolbar-right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-left: auto;
+}
+.settings-toolbar-right .btn {
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
+@media (max-width: 768px) {
+    .settings-toolbar-right {
+        margin-left: 0;
+        width: 100%;
+        justify-content: flex-end;
+    }
+}
