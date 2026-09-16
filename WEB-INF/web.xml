@@ -18,4 +18,17 @@
         </auth-constraint>
     </security-constraint>
 
+    <!-- Never serve shell scripts, even if one is ever placed in the web root. -->
+    <security-constraint>
+        <web-resource-collection>
+            <web-resource-name>Block Shell Scripts</web-resource-name>
+            <url-pattern>*.sh</url-pattern>
+            <http-method>GET</http-method>
+            <http-method>HEAD</http-method>
+            <http-method>POST</http-method>
+        </web-resource-collection>
+        <auth-constraint>
+        </auth-constraint>
+    </security-constraint>
+
 </web-app>

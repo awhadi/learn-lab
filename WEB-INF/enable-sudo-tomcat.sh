@@ -1,18 +1,18 @@
 #!/bin/bash
 # ============================================================
 # enable-sudo-tomcat.sh
-# Add passwordless sudo for tomcat to run service_control.sh
+# Add passwordless sudo for tomcat to run WEB-INF/service_control.sh
 #
 # Run ON THE SERVER as root:
-#   sudo bash enable-sudo-tomcat.sh
+#   sudo bash WEB-INF/enable-sudo-tomcat.sh
 # ============================================================
 set -e
 
 SUDOERS_FILE="/etc/sudoers.d/tomcat"
-RULE="tomcat  ALL=(ALL) NOPASSWD: /opt/tomcat/webapps/ROOT/service_control.sh"
+RULE="tomcat  ALL=(ALL) NOPASSWD: /opt/tomcat/webapps/ROOT/WEB-INF/service_control.sh"
 
 if [ "$(id -u)" -ne 0 ]; then
-    echo "Must run as root. Try: sudo bash enable-sudo-tomcat.sh"
+    echo "Must run as root. Try: sudo bash WEB-INF/enable-sudo-tomcat.sh"
     exit 1
 fi
 

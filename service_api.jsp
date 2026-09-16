@@ -85,7 +85,7 @@
 
     // Single shared status probe used by BOTH the Manage modal (per-service
     // action) and Settings batch_status, so they always agree. It runs the
-    // exact same sudo service_control.sh wrapper as start/stop/restart/logs
+    // exact same sudo WEB-INF/service_control.sh wrapper as start/stop/restart/logs
     // (which already has passwordless sudo on the lab), with a bounded
     // subprocess and a small output cap.
     private String probeStatus(String type, String serviceId, String systemctlService, String composePath) {
@@ -93,7 +93,7 @@
             if ("systemctl".equals(type)) {
                 if (systemctlService == null || systemctlService.isEmpty()) return "unknown";
                 ProcessBuilder pb = new ProcessBuilder("sudo",
-                    "/opt/tomcat/webapps/ROOT/service_control.sh",
+                    "/opt/tomcat/webapps/ROOT/WEB-INF/service_control.sh",
                     "systemctl", systemctlService, "status", "100");
                 pb.redirectErrorStream(true);
                 String out = runProcess(pb, 10, 200).trim();
@@ -108,7 +108,7 @@
                 java.io.File d = new java.io.File(composePath);
                 if (!d.isDirectory()) return "stopped";
                 ProcessBuilder pb = new ProcessBuilder("sudo",
-                    "/opt/tomcat/webapps/ROOT/service_control.sh",
+                    "/opt/tomcat/webapps/ROOT/WEB-INF/service_control.sh",
                     "docker-compose", (serviceId != null ? serviceId : "compose"), "status", "100", composePath);
                 pb.redirectErrorStream(true);
                 String out = runProcess(pb, 10, 200).trim();
@@ -618,7 +618,7 @@
                             return;
                         }
                         try {
-                            ProcessBuilder pb = new ProcessBuilder("sudo", "/opt/tomcat/webapps/ROOT/service_control.sh",
+                            ProcessBuilder pb = new ProcessBuilder("sudo", "/opt/tomcat/webapps/ROOT/WEB-INF/service_control.sh",
                                 "docker-compose", id, "stop", "100", composeP);
                             pb.redirectErrorStream(true);
                             runProcess(pb, 30, 200);
@@ -867,7 +867,7 @@
 
         String[] cmd;
         if ("systemctl".equals(serviceType)) {
-            cmd = new String[]{"sudo", "/opt/tomcat/webapps/ROOT/service_control.sh",
+            cmd = new String[]{"sudo", "/opt/tomcat/webapps/ROOT/WEB-INF/service_control.sh",
                 "systemctl", systemctlService, action, String.valueOf(lines)};
         } else if ("docker-compose".equals(serviceType)) {
             if (svcComposePath == null || svcComposePath.isEmpty()) {
@@ -880,7 +880,7 @@
                 out.print("{\"success\":false,\"error\":\"Compose path is outside the allowed base directory\"}");
                 return;
             }
-            cmd = new String[]{"sudo", "/opt/tomcat/webapps/ROOT/service_control.sh",
+            cmd = new String[]{"sudo", "/opt/tomcat/webapps/ROOT/WEB-INF/service_control.sh",
                 "docker-compose", service, action, String.valueOf(lines), svcComposePath};
         } else {
             out.print("{\"success\":false,\"error\":\"Service type not manageable\"}");
