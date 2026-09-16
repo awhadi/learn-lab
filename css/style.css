@@ -40,6 +40,11 @@ body {
     transition: background-color 0.3s ease, color 0.3s ease;
 }
 
+/* Keep the area behind the page themed as well, so no white flash on load. */
+html {
+    background: var(--bg);
+}
+
 /* ================= Header ================= */
 header {
     position: sticky;

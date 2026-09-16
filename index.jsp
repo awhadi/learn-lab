@@ -21,12 +21,23 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script>
+        // Apply the saved theme before anything paints: prevents the light-mode
+        // flash when dark mode is enabled (and needs no cached script.js).
+        (function () {
+            try {
+                var stored = localStorage.getItem('theme');
+                var dark = stored ? (stored === 'dark') : window.matchMedia('(prefers-color-scheme: dark)').matches;
+                document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+            } catch (e) {}
+        })();
+    </script>
     <title>AWHADI.ONLINE - Pega Lab</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" href="/favicon.ico?" />
     <link rel="stylesheet" href="/css/fontawesome-free/css/all.min.css">
     <script src="/js/vendor/purify.min.js"></script>
-    <link rel="stylesheet" href="/css/style.css?v=<%= appVersion %>-<%= System.currentTimeMillis() %>">
+    <link rel="stylesheet" href="/css/style.css?v=<%= appVersion %>">
 </head>
 <body>
     <div id="serverOutdated" class="notice notice-error" style="display:none;">
@@ -288,6 +299,6 @@
             } catch (e) { warn(); }
         })();
     </script>
-    <script src="/js/script.js?v=<%= appVersion %>-<%= System.currentTimeMillis() %>"></script>
+    <script src="/js/script.js?v=<%= appVersion %>"></script>
 </body>
 </html>
