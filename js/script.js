@@ -32,11 +32,6 @@ window.addEventListener('unhandledrejection', (e) => {
     });
 })();
 
-// ==================== Mobile menu ====================
-function toggleMobileMenu() {
-    document.getElementById('navLinks').classList.toggle('active');
-}
-
 // ==================== Time display ====================
 let clockTimer = null;
 function tickClock() {
@@ -123,8 +118,6 @@ let currentEditingServiceId = null;
 let currentServices = [];
 // Core infra entries that must not be deletable from the dashboard.
 const DISABLED_DELETE_IDS = ['docker', 'tomcat-service'];
-// Infra rows that get explicit Start/Restart controls (Docker also Stop).
-const INFRA_CONTROL_IDS = ['docker', 'tomcat-service'];
 
 function openSettingsModal() {
     document.getElementById('settingsModal').style.display = 'flex';
@@ -332,15 +325,16 @@ function fetchAllStatuses() {
 function renderRowActions(svc, status) {
     const slot = document.getElementById('svc-actions-' + svc.id);
     if (!slot) return;
-    // Explicit controls are offered only for the Docker and Tomcat rows,
-    // not for every manageable service.
-    if (INFRA_CONTROL_IDS.indexOf(svc.id) === -1) { slot.innerHTML = ''; return; }
+    // Row actions apply to every manageable systemctl/docker-compose service;
+    // static services never get a slot rendered here (see renderServicesList).
+    const isControllable = svc.manageable && (svc.type === 'systemctl' || svc.type === 'docker-compose');
+    if (!isControllable) { slot.innerHTML = ''; return; }
     const actions = Array.isArray(svc.actions) ? svc.actions : [];
     const buttons = [];
     if (status === 'running') {
         if (actions.indexOf('restart') !== -1) buttons.push({ a: 'restart', label: 'Restart', cls: 'btn-restart' });
-        // Stop is offered for Docker only; Tomcat must never be stopped.
-        if (svc.id === 'docker' && actions.indexOf('stop') !== -1) buttons.push({ a: 'stop', label: 'Stop', cls: 'btn-stop' });
+        // Tomcat must never be stopped from the dashboard (server also rejects it).
+        if (svc.id !== 'tomcat-service' && actions.indexOf('stop') !== -1) buttons.push({ a: 'stop', label: 'Stop', cls: 'btn-stop' });
     } else {
         // Stopped or unknown state: offer Start so the row stays actionable.
         if (actions.indexOf('start') !== -1) buttons.push({ a: 'start', label: 'Start', cls: 'btn-start' });
@@ -957,10 +951,6 @@ function loadAndRenderServices() {
 // ==================== Initialization ====================
 document.addEventListener('DOMContentLoaded', function() {
     
-    // --- Mobile menu button ---
-    const mobileBtn = document.querySelector('.mobile-menu-btn');
-    if (mobileBtn) mobileBtn.addEventListener('click', toggleMobileMenu);
-
     // --- Load service cards dynamically ---
     loadAndRenderServices();
 

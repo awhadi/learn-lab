@@ -58,11 +58,10 @@
     <header>
         <div class="header-inner">
             <div class="left">
-                <div class="logo" id="logoMenuBtn">
+                <div class="logo">
                     <a href="<%= baseUrl %>/"><img src="awhadi-online.webp" alt="awhadi.online"></a>
                     <span class="logo-version-badge" id="logoVersionBadge"><%= appVersion %></span>
                 </div>
-                <button class="mobile-menu-btn" style="display:none;"><i class="fas fa-bars"></i></button>
             </div>
             <div style="display:flex;align-items:center;gap:16px;">
                 <span class="time-display" id="time"></span>
@@ -234,7 +233,9 @@
             var TYPES = ['static', 'systemctl', 'docker-compose'];
             var ACTIONS = ['status', 'start', 'stop', 'restart', 'logs'];
             var unsafe = /<\s*(script|iframe|object|embed)|javascript:|data:text\/html/i;
-            var handler = /\bon(click|dblclick|load|error|mouse[a-z]*|key[a-z]*|focus|blur|submit|change|input|toggle|animation[a-z]*|transition[a-z]*)\s*=/i;
+            // Matches any "onXxx=" attribute rather than an enumerated list, so a
+            // handler name this list doesn't know about can't slip through.
+            var handler = /\bon[a-z]{2,32}\s*=/i;
 
             function badUrl(u) {
                 if (typeof u !== 'string' || !u.trim()) return true;
