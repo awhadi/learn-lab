@@ -119,6 +119,7 @@
                         </label>
                     </div>
                 </div>
+                <div class="settings-server-note" id="settingsServerNote" style="display:none;"></div>
                 <div class="services-list" id="servicesList"></div>
             </div>
         </div>
@@ -299,6 +300,27 @@
             }
             return problems;
         }
+
+        // Tells the truth about the deployed server file, so a stale service_api.jsp
+        // cannot masquerade as a broken import. A current file answers "No
+        // configuration content provided" when asked for import_services without a
+        // body; an older one answers "Missing service or action".
+        window.labCheckImportSupport = function () {
+            var note = document.getElementById('settingsServerNote');
+            if (!note) return;
+            fetch('<%= request.getContextPath() %>/service_api.jsp?action=import_services&t=' + Date.now(), { cache: 'no-store' })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    var ok = !!(d && /No configuration content/i.test(d.error || ''));
+                    note.style.display = ok ? 'none' : 'block';
+                    if (!ok) {
+                        note.innerHTML = '<i class="fas fa-exclamation-triangle"></i> '
+                            + 'Import is unavailable: this server is serving an older <code>service_api.jsp</code>. '
+                            + 'Copy the current <code>service_api.jsp</code> into the Tomcat webapp folder to enable import.';
+                    }
+                })
+                .catch(function () { note.style.display = 'none'; });
+        };
 
         // Import is handled inline (not in script.js) so it keeps working even
         // when a proxy serves a cached script.js to clients.

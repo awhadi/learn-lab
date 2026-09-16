@@ -129,6 +129,8 @@ const INFRA_CONTROL_IDS = ['docker', 'tomcat-service'];
 function openSettingsModal() {
     document.getElementById('settingsModal').style.display = 'flex';
     loadServicesList();
+    // Tell the truth about the deployed server file before the user picks a file.
+    if (window.labCheckImportSupport) window.labCheckImportSupport();
 }
 
 function closeSettingsModal() {
@@ -670,19 +672,17 @@ function deleteService(id) {
     }
 
     // Removing a row never stops anything and never deletes files; those stay a
-    // separate, explicit decision. A running service is asked about first.
+    // separate, explicit decision. Only a running service is asked about -- a
+    // stopped one is just removed from the list, with no dialog at all.
     probeDeleteStatus(svc).then(status => {
         if (status !== 'running') {
-            if (confirm(`Remove "${name}" from the dashboard?\n\n`
-                + 'Only this list entry is removed. The service keeps running and its files on the server are left untouched.')) {
-                removeFromList();
-            }
+            removeFromList();
             return;
         }
         const stopFirst = confirm(`"${name}" is running.\n\n`
-            + 'Do you want to stop it before removing it from the dashboard?\n\n'
-            + 'OK = stop the service, then remove it from the list (its files are kept)\n'
-            + 'Cancel = leave it running and only remove it from the list');
+            + 'Do you want to stop it before removing it from the list?\n\n'
+            + 'OK = stop the service, then remove it from the list\n'
+            + 'Cancel = leave it running, only remove it from the list');
         if (!stopFirst) {
             removeFromList();
             return;
@@ -690,12 +690,12 @@ function deleteService(id) {
         callServiceAPI({ service: id, action: 'stop' })
             .then(data => {
                 if (data.success) return removeFromList();
-                if (confirm(`Stopping "${name}" failed: ${data.error || 'Unknown error'}\n\nRemove it from the dashboard anyway?`)) {
+                if (confirm(`Could not stop "${name}": ${data.error || 'Unknown error'}\n\nRemove it from the list anyway? The service keeps running.`)) {
                     removeFromList();
                 }
             })
             .catch(err => {
-                if (confirm(`Stopping "${name}" failed: ${err.message}\n\nRemove it from the dashboard anyway?`)) {
+                if (confirm(`Could not stop "${name}": ${err.message}\n\nRemove it from the list anyway? The service keeps running.`)) {
                     removeFromList();
                 }
             });

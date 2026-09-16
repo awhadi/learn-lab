@@ -1,4 +1,5 @@
 :root {
+    color-scheme: light;
     --bg: #ffffff;
     --text: #0f172a;
     --header-bg: #f6f7f9;
@@ -13,6 +14,11 @@
     --navbar-bg: #1e293b;
     --navbar-text: #ffffff;
     --footer-bg: #f8fafc;
+    --input-bg: #f8fafc;
+    --input-border: #cbd5e1;
+    --input-hover-border: #94a3b8;
+    --btn-secondary-bg: #e5e7eb;
+    --btn-secondary-hover: #d1d5db;
 }
 
 [data-theme="dark"] {
@@ -30,6 +36,11 @@
     --navbar-bg: #020617;
     --navbar-text: #e2e8f0;
     --footer-bg: #0f172a;
+    --input-bg: #0f172a;
+    --input-border: #475569;
+    --input-hover-border: #64748b;
+    --btn-secondary-bg: #334155;
+    --btn-secondary-hover: #475569;
 }
 
 body {
@@ -1403,19 +1414,48 @@ input:checked + .toggle-slider:before {
 .form-group textarea {
     width: 100%;
     padding: 12px;
-    border: 1px solid var(--border);
+    border: 1px solid var(--input-border);
     border-radius: 8px;
     font-size: 14px;
-    background: var(--card-header-bg);
+    background: var(--input-bg);
     color: var(--text);
-    transition: border-color 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s;
     box-sizing: border-box;
+}
+.form-group input[type="text"]:hover:not(:disabled),
+.form-group input[type="url"]:hover:not(:disabled),
+.form-group select:hover:not(:disabled),
+.form-group textarea:hover:not(:disabled) {
+    border-color: var(--input-hover-border);
+}
+.form-group select {
+    /* One consistent control on every platform: the native arrow is replaced by
+       our own chevron so the box does not change shape between OSes. */
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 38px;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath fill='%2394a3b8' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    background-size: 12px 8px;
 }
 .form-group input:focus,
 .form-group select:focus,
 .form-group textarea:focus {
     outline: none;
     border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+}
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+    color: var(--text);
+    opacity: 0.45;
+}
+.form-group input:disabled,
+.form-group select:disabled,
+.form-group textarea:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
 }
 .form-group textarea {
     resize: vertical;
@@ -1453,6 +1493,8 @@ input:checked + .toggle-slider:before {
     font-size: 14px;
     border: none;
     transition: all 0.2s;
+    white-space: nowrap;   /* never break a button label onto two lines */
+    box-sizing: border-box;   /* links and labels must match <button> height */
 }
 .btn-primary {
     background: var(--accent);
@@ -1462,11 +1504,11 @@ input:checked + .toggle-slider:before {
     background: #4f46e5;
 }
 .btn-secondary {
-    background: var(--border);
+    background: var(--btn-secondary-bg);
     color: var(--text);
 }
 .btn-secondary:hover {
-    background: #d1d5db;
+    background: var(--btn-secondary-hover);
 }
 
 /* ================= Loading & Error States ================= */
@@ -1580,7 +1622,7 @@ input:checked + .toggle-slider:before {
     box-sizing: border-box;
 }
 .service-form-content .form-group select {
-    padding: 12px;
+    padding: 12px 38px 12px 12px;   /* keep room for the chevron drawn by the base rule */
 }
 .service-form-content .form-group textarea {
     width: 100%;
@@ -1688,13 +1730,37 @@ input:checked + .toggle-slider:before {
     flex-wrap: wrap;
     margin-left: auto;
 }
+.settings-toolbar .btn {
+    min-height: 36px;
+    padding: 8px 14px;
+    font-size: 13px;
+    flex-shrink: 0;
+}
 .settings-toolbar-right .btn {
-    padding: 6px 10px;
-    font-size: 12px;
+    min-height: 36px;
+    padding: 8px 12px;
+    font-size: 13px;
+    flex-shrink: 0;
 }
 .settings-toolbar-right label.btn {
     cursor: pointer;
     margin: 0;
+}
+
+/* ================= Settings: server capability note ================= */
+.settings-server-note {
+    margin: 0 0 12px 0;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-left: 3px solid #f59e0b;
+    background: var(--card-header-bg);
+    color: var(--text);
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.45;
+}
+.settings-server-note code {
+    font-family: monospace;
 }
 
 /* ================= Notices ================= */
