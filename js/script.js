@@ -654,25 +654,63 @@ function deleteService(id) {
     if (DISABLED_DELETE_IDS.indexOf(id) !== -1) return; // belt & braces: infra rows have disabled buttons
     const svc = currentServices.find(s => s.id === id);
     const name = svc ? svc.name : id;
-    const isCompose = !!(svc && svc.type === 'docker-compose');
-    const msg = isCompose
-        ? `Delete "${name}"?\n\nThis stops the stack and removes its files from the server.`
-        : `Remove "${name}" from the dashboard?`;
-    if (!confirm(msg)) {
-        return;
+
+    function removeFromList() {
+        callServiceAPI({ action: 'delete_service', id: id })
+            .then(data => {
+                if (data.success) {
+                    loadServicesList();
+                } else {
+                    alert('Failed to delete service: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                alert('Error: ' + err.message);
+            });
     }
-    
-    callServiceAPI({ action: 'delete_service', id: id })
-        .then(data => {
-            if (data.success) {
-                loadServicesList();
-            } else {
-                alert('Failed to delete service: ' + (data.error || 'Unknown error'));
+
+    // Removing a row never stops anything and never deletes files; those stay a
+    // separate, explicit decision. A running service is asked about first.
+    probeDeleteStatus(svc).then(status => {
+        if (status !== 'running') {
+            if (confirm(`Remove "${name}" from the dashboard?\n\n`
+                + 'Only this list entry is removed. The service keeps running and its files on the server are left untouched.')) {
+                removeFromList();
             }
-        })
-        .catch(err => {
-            alert('Error: ' + err.message);
-        });
+            return;
+        }
+        const stopFirst = confirm(`"${name}" is running.\n\n`
+            + 'Do you want to stop it before removing it from the dashboard?\n\n'
+            + 'OK = stop the service, then remove it from the list (its files are kept)\n'
+            + 'Cancel = leave it running and only remove it from the list');
+        if (!stopFirst) {
+            removeFromList();
+            return;
+        }
+        callServiceAPI({ service: id, action: 'stop' })
+            .then(data => {
+                if (data.success) return removeFromList();
+                if (confirm(`Stopping "${name}" failed: ${data.error || 'Unknown error'}\n\nRemove it from the dashboard anyway?`)) {
+                    removeFromList();
+                }
+            })
+            .catch(err => {
+                if (confirm(`Stopping "${name}" failed: ${err.message}\n\nRemove it from the dashboard anyway?`)) {
+                    removeFromList();
+                }
+            });
+    });
+}
+
+// Fresh status probe for a delete decision: the row badge can be minutes old.
+// Non-manageable rows (static links) are never asked about.
+function probeDeleteStatus(svc) {
+    if (!svc || !svc.manageable || (svc.type !== 'systemctl' && svc.type !== 'docker-compose')) {
+        return Promise.resolve('n/a');
+    }
+    return callServiceAPI({ service: svc.id, action: 'status' })
+        .then(data => (data && data.status) ? data.status : 'unknown')
+        .catch(() => 'unknown');
 }
 
 // ==================== Service Management Modal ====================

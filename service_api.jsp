@@ -102,11 +102,6 @@
         return false;
     }
 
-    private String firstControlScript() {
-        for (String s : controlScriptCandidates()) if (new java.io.File(s).isFile()) return s;
-        return controlScriptCandidates()[0];
-    }
-
     // True when the output looks like the command never really ran (sudo denied
     // it, asked for a password, the path is wrong, ...).
     private boolean isScriptError(String out) {
@@ -774,33 +769,10 @@
                 }
 
                 int objEnd = findMatchingBrace(jsonConfig, objStart);
-                String serviceBlock = jsonConfig.substring(objStart, objEnd + 1);
 
-                String typeCheck = serviceBlock.replaceAll("\\s+", "");
-                if (typeCheck.contains("\"type\":\"docker-compose\"")) {
-                    String composeP = extractJsonField(serviceBlock, "composePath");
-                    if (composeP != null && !composeP.isEmpty()) {
-                        String baseP = extractJsonField(jsonConfig, "composeBasePath");
-                        if (baseP == null || baseP.isEmpty()) baseP = "/srv/docker-compose";
-                        if (!isWithinBase(composeP, baseP)) {
-                            out.print("{\"success\":false,\"error\":\"Refusing delete: compose path is outside the allowed base directory\"}");
-                            return;
-                        }
-                        try {
-                            String delScript = firstControlScript();
-                            ProcessBuilder pb = new ProcessBuilder("sudo", delScript,
-                                "docker-compose", id, "stop", "100", composeP);
-                            pb.redirectErrorStream(true);
-                            runProcess(pb, 30, 200);
-                        } catch (Exception e) { logProblem("delete_service: stopping compose " + id + " failed", e); }
-                        try {
-                            ProcessBuilder pb2 = new ProcessBuilder("sudo", "rm", "-rf", composeP);
-                            pb2.redirectErrorStream(true);
-                            runProcess(pb2, 60, 100);
-                        } catch (Exception e) { logProblem("delete_service: removing " + composeP + " failed", e); }
-                    }
-                }
-
+                // Deleting only removes the entry from this list. The service itself is
+                // left alone: nothing is stopped or restarted, and no files on the server
+                // are touched (that used to run `docker-compose stop` and `rm -rf`).
                 String before = jsonConfig.substring(0, objStart);
                 String after = jsonConfig.substring(objEnd + 1);
 
