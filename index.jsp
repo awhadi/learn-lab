@@ -40,13 +40,6 @@
     <link rel="stylesheet" href="/css/style.css?v=<%= appVersion %>">
 </head>
 <body>
-    <div id="serverOutdated" class="notice notice-error" style="display:none;">
-        <i class="fas fa-exclamation-triangle"></i>
-        Server file <code>service_api.jsp</code> is older than this page (expected <strong><%= appVersion %></strong>).
-        Export / Import settings will not work until it is deployed.
-    </div>
-
-
     <div id="disclaimer">
         <div class="disclaimer-container">
             <button class="close-btn" data-action="closeDisclaimer"><i class="fas fa-times"></i></button>
@@ -269,7 +262,11 @@
                             alert('Settings loaded.');
                             window.location.reload();
                         } else {
-                            alert('Load failed: ' + ((d && d.error) || 'unknown error'));
+                            var msg = (d && d.error) || 'unknown error';
+                            if (/Missing service or action/i.test(msg)) {
+                                msg = 'the server\'s service_api.jsp is out of date - deploy the current service_api.jsp (import_services action missing)';
+                            }
+                            alert('Load failed: ' + msg);
                         }
                     })
                     .catch(function (e) { alert('Load failed: ' + e.message); })
@@ -281,23 +278,6 @@
             };
             reader.readAsText(file);
         }
-
-        // Guard: if the deployed service_api.jsp is older than this page, warn the
-        // user instead of letting Export/Import fail confusingly.
-        (function () {
-            function warn() {
-                var el = document.getElementById('serverOutdated');
-                if (el) el.style.display = 'block';
-            }
-            try {
-                fetch('/service_api.jsp?action=export_settings', { method: 'GET' })
-                    .then(function (r) {
-                        var cd = r.headers.get('Content-Disposition') || '';
-                        if (!r.ok || cd.indexOf('lab-services') === -1) warn();
-                    })
-                    .catch(warn);
-            } catch (e) { warn(); }
-        })();
     </script>
     <script src="/js/script.js?v=<%= appVersion %>"></script>
 </body>
