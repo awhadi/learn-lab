@@ -671,10 +671,24 @@ let currentServiceName = null;
 
 function openServiceModal(service, serviceName) {
     currentService = service;
-    currentServiceName = serviceName || service;
+    currentServiceName = serviceName || null;
     const modal = document.getElementById('serviceModal');
     const titleElem = document.getElementById('modalServiceTitle');
-    titleElem.innerText = currentServiceName + ' Management';
+    if (currentServiceName) {
+        titleElem.innerText = currentServiceName + ' Management';
+    } else {
+        // Never show the generated id: resolve the display name from config.
+        titleElem.innerText = 'Manage service';
+        callServiceAPI({ action: 'list_services' })
+            .then(data => {
+                const svc = ((data && data.config && data.config.services) || []).find(s => s.id === service);
+                if (svc && svc.name) {
+                    currentServiceName = svc.name;
+                    if (currentService === service) titleElem.innerText = svc.name + ' Management';
+                }
+            })
+            .catch(() => {});
+    }
     modal.style.display = 'flex';
     document.getElementById('modalStatusIndicator').className = 'service-status-indicator';
     document.getElementById('modalStatusText').innerText = 'Checking status...';

@@ -572,15 +572,22 @@
                 svcJson.append(",\"createdAt\":\"").append(java.time.Instant.now().toString()).append("\"}");
                 String newService = svcJson.toString();
 
-                int insertIdx = jsonConfig.lastIndexOf("\"services\"");
-                int bracketIdx = jsonConfig.indexOf("[", insertIdx);
-                int firstItem = jsonConfig.indexOf("{", bracketIdx);
-
+                // New services go to the end of the list, but the Docker and
+                // Tomcat control entries stay last (as shown on the dashboard).
+                int dockerStart = findServiceObjStart(jsonConfig, "docker");
                 String newCfg;
-                if (firstItem > bracketIdx && jsonConfig.charAt(firstItem) == '{') {
-                    newCfg = jsonConfig.substring(0, firstItem) + "\n    " + newService + ",\n" + jsonConfig.substring(firstItem).trim();
+                if (dockerStart != -1) {
+                    newCfg = jsonConfig.substring(0, dockerStart) + newService + ",\n    " + jsonConfig.substring(dockerStart);
                 } else {
-                    newCfg = jsonConfig.substring(0, bracketIdx + 1) + "\n    " + newService + "\n  " + jsonConfig.substring(bracketIdx + 1);
+                    int arrStart = findArrayStart(jsonConfig);
+                    int arrEnd = (arrStart != -1) ? findArrayEnd(jsonConfig, arrStart) : -1;
+                    if (arrEnd == -1) {
+                        out.print("{\"success\":false,\"error\":\"Could not locate services array\"}");
+                        return;
+                    }
+                    String prefix = jsonConfig.substring(0, arrEnd);
+                    String sep = prefix.trim().endsWith("[") ? "\n    " : ",\n    ";
+                    newCfg = prefix + sep + newService + "\n  " + jsonConfig.substring(arrEnd);
                 }
 
                 writeConfigFile(configPath, newCfg);
