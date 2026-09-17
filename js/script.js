@@ -462,18 +462,127 @@ function resetServicesToDefault() {
 }
 
 // ==================== Add/Edit Service ====================
+// ==================== Icon picker ====================
+// A curated subset of the self-hosted FontAwesome set (no extra network
+// request — this app already ships the full font) covering the icon
+// families actually useful for a lab/infra dashboard. The text input next
+// to it still accepts any class, so this is a shortcut, not a restriction.
+const ICON_CHOICES = [
+    'fas fa-cube', 'fas fa-server', 'fas fa-database', 'fas fa-cogs', 'fas fa-cog',
+    'fas fa-globe', 'fas fa-folder-open', 'fas fa-envelope', 'fas fa-code', 'fas fa-terminal',
+    'fas fa-chart-bar', 'fas fa-chart-line', 'fas fa-lock', 'fas fa-shield-alt', 'fas fa-cloud',
+    'fas fa-key', 'fas fa-file', 'fas fa-desktop', 'fas fa-network-wired', 'fas fa-link',
+    'fas fa-table', 'fas fa-exchange-alt', 'fas fa-plug', 'fas fa-wrench', 'fas fa-tools',
+    'fas fa-bell', 'fas fa-bug', 'fas fa-flask', 'fas fa-rocket', 'fas fa-layer-group',
+    'fas fa-sitemap', 'fas fa-project-diagram', 'fas fa-users', 'fas fa-user', 'fas fa-clock',
+    'fas fa-calendar', 'fas fa-search', 'fas fa-filter', 'fas fa-list', 'fas fa-inbox',
+    'fas fa-comments', 'fas fa-cloud-upload-alt', 'fas fa-cloud-download-alt', 'fas fa-hdd',
+    'fas fa-microchip', 'fas fa-memory',
+    'fab fa-docker', 'fab fa-github', 'fab fa-git-alt', 'fab fa-linux', 'fab fa-windows',
+    'fab fa-apple', 'fab fa-aws', 'fab fa-google', 'fab fa-react', 'fab fa-node-js',
+    'fab fa-python', 'fab fa-java', 'fab fa-php'
+];
+
+function updateIconPreview() {
+    const value = (document.getElementById('serviceIcon').value || 'fas fa-cube').trim();
+    document.getElementById('serviceIconPreview').innerHTML = '<i class="' + escapeHtml(value) + '"></i>';
+    document.querySelectorAll('.icon-picker-btn').forEach(btn => {
+        btn.classList.toggle('selected', btn.dataset.icon === value);
+    });
+}
+
+function renderIconPicker() {
+    const picker = document.getElementById('iconPicker');
+    if (picker.childElementCount > 0) return; // built once, reused
+    picker.innerHTML = ICON_CHOICES.map(cls =>
+        `<button type="button" class="icon-picker-btn" data-icon="${escapeHtml(cls)}" title="${escapeHtml(cls)}"><i class="${escapeHtml(cls)}"></i></button>`
+    ).join('');
+    picker.querySelectorAll('.icon-picker-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.getElementById('serviceIcon').value = btn.dataset.icon;
+            updateIconPreview();
+            closeIconPicker();
+        });
+    });
+}
+
+function closeIconPicker() {
+    document.getElementById('iconPicker').style.display = 'none';
+}
+
+function toggleIconPicker() {
+    const picker = document.getElementById('iconPicker');
+    const opening = picker.style.display === 'none';
+    if (opening) renderIconPicker();
+    picker.style.display = opening ? 'grid' : 'none';
+    if (opening) updateIconPreview();
+}
+
+// Closes the picker on any click outside it (and outside its own toggle
+// button), same as a normal dropdown — otherwise it stayed open while
+// filling in the rest of the form.
+document.addEventListener('click', function (e) {
+    const picker = document.getElementById('iconPicker');
+    if (!picker || picker.style.display === 'none') return;
+    const toggleBtn = document.getElementById('toggleIconPickerBtn');
+    if (picker.contains(e.target) || e.target === toggleBtn) return;
+    closeIconPicker();
+});
+
+// ==================== Open Links (repeatable label + URL rows) ====================
+function createLinkRow(text, url) {
+    const row = document.createElement('div');
+    row.className = 'link-row';
+    row.innerHTML = `
+        <input type="text" class="link-label-input" placeholder="Button label (optional)">
+        <input type="text" class="link-url-input" placeholder="https://server.com/path or /path">
+        <button type="button" class="btn-remove-link" title="Remove this link"><i class="fas fa-times"></i></button>
+    `;
+    row.querySelector('.link-label-input').value = text || '';
+    row.querySelector('.link-url-input').value = url || '';
+    row.querySelector('.btn-remove-link').addEventListener('click', () => row.remove());
+    return row;
+}
+
+function addLinkRow(text = '', url = '') {
+    document.getElementById('serviceLinksBox').appendChild(createLinkRow(text, url));
+}
+
+function resetLinkRows(links) {
+    const box = document.getElementById('serviceLinksBox');
+    box.innerHTML = '';
+    if (Array.isArray(links) && links.length > 0) {
+        links.forEach(l => addLinkRow(l && l.text, l && l.url));
+    } else {
+        addLinkRow();
+    }
+}
+
+// Reads the current rows into [{text, url}], skipping rows left without a URL.
+function collectLinkRows() {
+    return Array.prototype.slice.call(document.querySelectorAll('#serviceLinksBox .link-row'))
+        .map(row => ({
+            text: row.querySelector('.link-label-input').value.trim(),
+            url: row.querySelector('.link-url-input').value.trim()
+        }))
+        .filter(l => l.url !== '');
+}
+
 function openServiceForm(serviceId = null) {
     currentEditingServiceId = serviceId;
     const modal = document.getElementById('serviceFormModal');
     const title = document.getElementById('serviceFormTitle');
     const form = document.getElementById('serviceForm');
-    
+
     form.reset();
     document.getElementById('serviceFormId').value = '';
     document.getElementById('serviceVisible').checked = true;
     document.getElementById('serviceIcon').value = 'fas fa-cube';
+    document.getElementById('iconPicker').style.display = 'none';
+    updateIconPreview();
+    resetLinkRows(null);
     const typeSelect = document.getElementById('serviceType');
-    
+
     if (serviceId) {
         title.textContent = 'Edit Service';
         loadServiceForEdit(serviceId);
@@ -506,7 +615,14 @@ function loadServiceForEdit(id) {
                     document.getElementById('serviceName').value = service.name || '';
                     document.getElementById('serviceType').value = service.type || 'docker-compose';
                     document.getElementById('serviceIcon').value = service.icon || 'fas fa-cube';
-                    document.getElementById('serviceOpenUrl').value = (service.openUrl || (service.links && service.links.length > 0 ? service.links[0].url : '')) || '';
+                    updateIconPreview();
+                    if (Array.isArray(service.links) && service.links.length > 0) {
+                        resetLinkRows(service.links);
+                    } else if (service.openUrl) {
+                        resetLinkRows([{ text: '', url: service.openUrl }]);
+                    } else {
+                        resetLinkRows(null);
+                    }
                     document.getElementById('serviceDescription').value = service.description || '';
                     document.getElementById('serviceVisible').checked = service.visible;
                     document.getElementById('serviceManageable').checked = service.manageable;
@@ -609,8 +725,8 @@ function saveService() {
     const description = document.getElementById('serviceDescription').value;
     const visible = document.getElementById('serviceVisible').checked;
     const manageable = document.getElementById('serviceManageable').checked;
-    const openUrl = document.getElementById('serviceOpenUrl').value.trim();
-    
+    const links = collectLinkRows();
+
     const params = {
         action: id ? 'update_service' : 'add_service',
         name: name,
@@ -619,7 +735,7 @@ function saveService() {
         description: description,
         visible: visible,
         manageable: manageable,
-        openUrl: openUrl
+        links: JSON.stringify(links)
     };
     
     if (id) params.id = id;
@@ -999,6 +1115,22 @@ document.addEventListener('DOMContentLoaded', function() {
     const addServiceBtn = document.getElementById('addServiceBtn');
     if (addServiceBtn) {
         addServiceBtn.addEventListener('click', () => openServiceForm());
+    }
+
+    // --- Add another link button ---
+    const addLinkBtn = document.getElementById('addLinkBtn');
+    if (addLinkBtn) {
+        addLinkBtn.addEventListener('click', () => addLinkRow());
+    }
+
+    // --- Icon picker ---
+    const toggleIconPickerBtn = document.getElementById('toggleIconPickerBtn');
+    if (toggleIconPickerBtn) {
+        toggleIconPickerBtn.addEventListener('click', toggleIconPicker);
+    }
+    const serviceIconInput = document.getElementById('serviceIcon');
+    if (serviceIconInput) {
+        serviceIconInput.addEventListener('input', updateIconPreview);
     }
 
     // --- Service form type change ---

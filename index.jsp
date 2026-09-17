@@ -172,12 +172,18 @@
                     </div>
                     <div class="form-group">
                         <label for="serviceIcon">Icon (FontAwesome class)</label>
-                        <input type="text" id="serviceIcon" value="fas fa-cube">
+                        <div class="icon-field-row">
+                            <div class="icon-preview" id="serviceIconPreview"><i class="fas fa-cube"></i></div>
+                            <input type="text" id="serviceIcon" value="fas fa-cube">
+                            <button type="button" class="btn btn-secondary btn-sm" id="toggleIconPickerBtn">Choose icon</button>
+                        </div>
+                        <div class="icon-picker" id="iconPicker" style="display:none;"></div>
                     </div>
                     <div class="form-group">
-                        <label for="serviceOpenUrl">Open Link (URL)</label>
-                        <input type="text" id="serviceOpenUrl" placeholder="https://server.com/path or /path">
-                        <small class="form-hint">Full URL (https://...) or a path like /test or phpldapadmin — paths open on the current domain automatically.</small>
+                        <label>Open Links</label>
+                        <div class="links-box" id="serviceLinksBox"></div>
+                        <button type="button" class="btn btn-secondary btn-sm" id="addLinkBtn"><i class="fas fa-plus"></i> Add another link</button>
+                        <small class="form-hint">Full URL (https://...) or a path like /test or phpldapadmin — paths open on the current domain automatically. Leave the label blank to default to "Open &lt;service name&gt;". A service can also have no link at all.</small>
                     </div>
                     <div class="form-group">
                         <label for="serviceDescription">Description (HTML supported)</label>

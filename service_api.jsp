@@ -511,6 +511,62 @@
         }
         return result;
     }
+
+    // Inserts (or replaces) a field whose value is a raw JSON value — an
+    // array or object, not a quoted string — unlike updateJsonField, which
+    // always quotes. Used for the "links" array built by buildLinksJson.
+    private String setJsonRawField(String json, String field, String rawValue) {
+        json = removeJsonField(json, field);
+        int close = json.length() - 1;
+        while (close >= 0 && Character.isWhitespace(json.charAt(close))) close--;
+        if (close < 0 || json.charAt(close) != '}') return json;
+        String prefix = json.substring(0, close).trim();
+        String insert = "\"" + field + "\":" + rawValue;
+        if (prefix.endsWith("{") || prefix.endsWith(",")) {
+            return json.substring(0, close) + insert + json.substring(close);
+        }
+        return json.substring(0, close) + "," + insert + json.substring(close);
+    }
+
+    // Builds a "links" JSON array from the form's own small JSON array param
+    // (e.g. [{"text":"Manager","url":"/manager"}, ...]) — parsed here rather
+    // than trusted verbatim, and rebuilt field-by-field through escapeJsonStr
+    // so nothing in it can break out of the surrounding config JSON. Entries
+    // without a url are dropped; a blank text is omitted so the client's
+    // "Open <service name>" fallback applies.
+    private String buildLinksJson(String linksParam) {
+        if (linksParam == null || linksParam.trim().isEmpty()) return "[]";
+        String s = linksParam.trim();
+        if (!s.startsWith("[") || !s.endsWith("]")) return "[]";
+        List<String> objs = new ArrayList<String>();
+        int depth = 0, start = -1;
+        boolean inStr = false, esc = false;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (esc) { esc = false; continue; }
+            if (c == '\\') { esc = true; continue; }
+            if (c == '"') { inStr = !inStr; continue; }
+            if (inStr) continue;
+            if (c == '{') { if (depth == 0) start = i; depth++; }
+            else if (c == '}') { depth--; if (depth == 0 && start != -1) { objs.add(s.substring(start, i + 1)); start = -1; } }
+        }
+        StringBuilder out = new StringBuilder("[");
+        boolean first = true;
+        for (String obj : objs) {
+            String text = extractJsonField(obj, "text");
+            String url = extractJsonField(obj, "url");
+            if (url == null || url.trim().isEmpty()) continue;
+            if (!first) out.append(",");
+            first = false;
+            out.append("{");
+            if (text != null && !text.trim().isEmpty()) {
+                out.append("\"text\":\"").append(escapeJsonStr(text.trim())).append("\",");
+            }
+            out.append("\"url\":\"").append(escapeJsonStr(url.trim())).append("\",\"btn\":true}");
+        }
+        out.append("]");
+        return out.toString();
+    }
 %><%
     // NOTE: Open by design (self-hosted learning lab). No secret is checked here;
     // if this dashboard is ever exposed beyond the lab, protect /service_api.jsp at
@@ -766,12 +822,7 @@
 
                 svcJson.append(",\"description\":\"").append(escapeJsonStr(description != null ? description : "")).append("\"");
 
-                String openUrl = request.getParameter("openUrl");
-                if (openUrl != null && !openUrl.trim().isEmpty()) {
-                    svcJson.append(",\"openUrl\":\"").append(escapeJsonStr(openUrl.trim())).append("\"");
-                } else {
-                    svcJson.append(",\"links\":[]");
-                }
+                svcJson.append(",\"links\":").append(buildLinksJson(request.getParameter("links")));
 
                 svcJson.append(",\"visible\":").append(isVisible);
                 svcJson.append(",\"manageable\":").append(isManageable);
@@ -844,15 +895,10 @@
                 if (visibleParam != null) serviceBlock = serviceBlock.replaceAll("\"visible\":\\s*(true|false)", "\"visible\":" + ("true".equals(visibleParam)));
                 if (manageableParam != null) serviceBlock = serviceBlock.replaceAll("\"manageable\":\\s*(true|false)", "\"manageable\":" + ("true".equals(manageableParam)));
 
-                String openUrl = request.getParameter("openUrl");
-                if (openUrl != null) {
-                    String trimmedOpen = openUrl.trim();
-                    if (trimmedOpen.isEmpty()) {
-                        serviceBlock = removeJsonField(serviceBlock, "openUrl");
-                    } else {
-                        serviceBlock = updateJsonField(serviceBlock, "openUrl", trimmedOpen);
-                        serviceBlock = removeJsonField(serviceBlock, "links");
-                    }
+                String linksParam = request.getParameter("links");
+                if (linksParam != null) {
+                    serviceBlock = removeJsonField(serviceBlock, "openUrl");
+                    serviceBlock = setJsonRawField(serviceBlock, "links", buildLinksJson(linksParam));
                 }
 
                 String newCfg = jsonConfig.substring(0, objStart) + serviceBlock + jsonConfig.substring(objEnd + 1);

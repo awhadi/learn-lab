@@ -1413,6 +1413,102 @@ input:checked + .toggle-slider:before {
 .compose-preview.show {
     display: block;
 }
+
+/* ================= Service form: multiple Open Links ================= */
+.links-box {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border: 1px solid var(--input-border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    background: var(--input-bg);
+}
+.links-box:empty {
+    display: none;
+}
+.link-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.link-row input[type="text"] {
+    flex: 1;
+    min-width: 0;
+}
+.link-row .btn-remove-link {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #ef4444;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background 0.2s;
+}
+.link-row .btn-remove-link:hover {
+    background: #ef444415;
+}
+
+/* ================= Service form: icon picker ================= */
+.icon-field-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.icon-field-row input[type="text"] {
+    flex: 1;
+    min-width: 0;
+}
+.icon-preview {
+    flex-shrink: 0;
+    width: 46px;
+    height: 46px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+}
+.icon-picker {
+    margin-top: 8px;
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--input-border);
+    border-radius: 8px;
+    padding: 10px;
+    background: var(--input-bg);
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+    gap: 6px;
+}
+.icon-picker-btn {
+    width: 100%;
+    aspect-ratio: 1;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: var(--card-bg);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+}
+.icon-picker-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.icon-picker-btn.selected {
+    background: var(--accent);
+    color: white;
+}
 .compose-preview.is-error {
     color: #ef4444;
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
