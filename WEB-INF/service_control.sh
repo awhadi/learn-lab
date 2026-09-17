@@ -48,7 +48,12 @@ compose_action() {
             docker compose down
             ;;
         restart)
-            docker compose down && docker compose up -d
+            # Detached: a compose stack (e.g. Kafka) can take longer to cycle
+            # than the reverse proxy's timeout, which would otherwise turn a
+            # slow-but-successful restart into an HTTP 502 for the caller.
+            nohup sh -c 'docker compose down && docker compose up -d' >/dev/null 2>&1 &
+            disown
+            echo "restart initiated"
             ;;
         logs)
             docker compose logs --tail="$LINES" 2>&1
@@ -83,7 +88,11 @@ systemctl_action() {
             systemctl stop "$svc"
             ;;
         restart)
-            systemctl restart "$svc"
+            # --no-block: hand the job to systemd and return immediately. A
+            # blocking restart of tomcat kills the very process serving this
+            # request before it can respond, which always shows up to the
+            # browser as an HTTP 502 even though the restart itself succeeds.
+            systemctl --no-block restart "$svc"
             ;;
         logs)
             journalctl -u "$svc" -n "$LINES" --no-pager 2>&1
