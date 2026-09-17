@@ -247,6 +247,11 @@ main {
     flex: 1;
 }
 
+.card-service-info {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
 /* Grid */
 .row {
     display: flex;

@@ -581,6 +581,7 @@ function openServiceForm(serviceId = null) {
     document.getElementById('iconPicker').style.display = 'none';
     updateIconPreview();
     resetLinkRows(null);
+    resetComposePreview();
     const typeSelect = document.getElementById('serviceType');
 
     if (serviceId) {
@@ -631,7 +632,8 @@ function loadServiceForEdit(id) {
                         document.getElementById('composePath').value = service.composePath || '';
                         document.getElementById('composeOption').value = 'path';
                         updateComposeOptionFields();
-                        loadComposePreview();
+                        // Preview stays hidden until the user explicitly asks for it.
+                        resetComposePreview();
                     } else if (service.type === 'systemctl') {
                         document.getElementById('systemctlService').value = service.service || '';
                     }
@@ -677,14 +679,34 @@ function updateComposeOptionFields() {
     document.getElementById('composeContentGroup').style.display = option === 'content' ? 'block' : 'none';
 }
 
+// Resets the preview to its default (hidden) state — called whenever the
+// form opens, so a previously-shown preview never carries over.
+function resetComposePreview() {
+    const preview = document.getElementById('composeFilePreview');
+    const btn = document.getElementById('loadComposeFileBtn');
+    if (!preview) return;
+    preview.textContent = '';
+    preview.classList.remove('show', 'is-error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Show docker-compose.yml'; }
+}
+
+// Toggles the compose-file preview open/closed. Hidden is always the
+// starting state (see resetComposePreview); only this button shows it.
 function loadComposePreview() {
     const preview = document.getElementById('composeFilePreview');
     const btn = document.getElementById('loadComposeFileBtn');
     if (!preview) return;
+
+    if (preview.classList.contains('show')) {
+        preview.classList.remove('show');
+        if (btn) btn.textContent = 'Show docker-compose.yml';
+        return;
+    }
+
     const path = (document.getElementById('composePath').value || '').trim();
     if (!path) {
-        preview.textContent = '';
-        preview.classList.remove('show', 'is-error');
+        preview.textContent = 'Enter a compose path first.';
+        preview.classList.add('show', 'is-error');
         return;
     }
     if (btn) {
@@ -693,7 +715,7 @@ function loadComposePreview() {
     }
     callServiceAPI({ action: 'read_compose_file', composePath: path })
         .then(data => {
-            if (btn) { btn.disabled = false; btn.textContent = 'Show docker-compose.yml'; }
+            if (btn) { btn.disabled = false; btn.textContent = 'Hide docker-compose.yml'; }
             if (data.success) {
                 preview.textContent = '# ' + (data.fileName || 'docker-compose.yml') + '\n\n' + data.content;
                 preview.classList.remove('is-error');
@@ -704,7 +726,7 @@ function loadComposePreview() {
             preview.classList.add('show');
         })
         .catch(err => {
-            if (btn) { btn.disabled = false; btn.textContent = 'Show docker-compose.yml'; }
+            if (btn) { btn.disabled = false; btn.textContent = 'Hide docker-compose.yml'; }
             preview.textContent = 'Failed to load file: ' + err.message;
             preview.classList.add('is-error');
             preview.classList.add('show');
@@ -1152,7 +1174,16 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     const composePathInput = document.getElementById('composePath');
     if (composePathInput) {
-        composePathInput.addEventListener('change', loadComposePreview);
+        // Never auto-opens the preview (stays hidden by default) — but if it's
+        // already open and the path changes, refresh it instead of silently
+        // showing stale content for the previous path.
+        composePathInput.addEventListener('change', function () {
+            const preview = document.getElementById('composeFilePreview');
+            if (preview && preview.classList.contains('show')) {
+                preview.classList.remove('show');
+                loadComposePreview();
+            }
+        });
     }
 
     // --- Service form submit ---

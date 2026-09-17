@@ -6,3 +6,10 @@
 # generated per-deployment, so this must never be committed.
 WEB-INF/access-log.tsv
 WEB-INF/access-log.tsv.tmp
+
+# Live service config (server-local, per-deployment customization) — must
+# never be committed, or every deploy would overwrite the production setup.
+# services.default.json (the factory snapshot) stays tracked; the app
+# bootstraps services.json from it automatically when missing.
+WEB-INF/services.json
+WEB-INF/services.json.tmp

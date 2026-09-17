@@ -100,7 +100,23 @@
 
     private String readConfigFile(String path) {
         try {
-            return new String(Files.readAllBytes(Paths.get(path)), StandardCharsets.UTF_8);
+            Path target = Paths.get(path);
+            if (!Files.exists(target)) {
+                // services.json is intentionally not tracked in git (production
+                // customizations must survive future deploys). On a fresh deploy
+                // it won't exist yet, so bootstrap it once from the shipped
+                // services.default.json snapshot.
+                synchronized (CONFIG_LOCK) {
+                    if (!Files.exists(target)) {
+                        Path defaultPath = target.resolveSibling("services.default.json");
+                        if (Files.exists(defaultPath)) {
+                            String defaultCfg = new String(Files.readAllBytes(defaultPath), StandardCharsets.UTF_8);
+                            writeConfigFile(path, defaultCfg);
+                        }
+                    }
+                }
+            }
+            return new String(Files.readAllBytes(target), StandardCharsets.UTF_8);
         } catch (Exception e) {
             logProblem("readConfigFile failed for " + path, e);
             return "{\"services\":[],\"settings\":{\"composeBasePath\":\"/srv/docker-compose\"}}";
