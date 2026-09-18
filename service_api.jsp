@@ -16,18 +16,28 @@
         "reorder_service", "reset_services", "import_services", "track_access"
     ));
 
+    // Loose IPv4/IPv6 shape check — not a strict validator, just enough to
+    // reject anything that isn't actually an IP (a spoofed header full of
+    // tabs/newlines could otherwise corrupt the access-log's TSV structure,
+    // or fake an arbitrary "visitor" IP in the Access Information display).
+    private boolean looksLikeIpAddress(String s) {
+        return s != null && s.matches("[0-9a-fA-F:.]{2,45}");
+    }
+
     // Best-effort real client IP: honor a reverse proxy's forwarded-for
     // headers (this app is proxied — see GUIDE.txt) before falling back to
     // the raw socket address, which would otherwise show the proxy's own IP
-    // for every visitor.
+    // for every visitor. These headers are client-supplied and not verified
+    // to actually come from a trusted proxy, so treat the result as a display
+    // convenience, not an access-control signal.
     private String getClientIp(HttpServletRequest request) {
         String fwd = request.getHeader("X-Forwarded-For");
         if (fwd != null && !fwd.trim().isEmpty()) {
             String first = fwd.split(",")[0].trim();
-            if (!first.isEmpty()) return first;
+            if (looksLikeIpAddress(first)) return first;
         }
         String real = request.getHeader("X-Real-IP");
-        if (real != null && !real.trim().isEmpty()) return real.trim();
+        if (real != null && looksLikeIpAddress(real.trim())) return real.trim();
         return request.getRemoteAddr();
     }
 
@@ -808,6 +818,17 @@
                     out.print("{\"success\":false,\"error\":\"" + escapeJsonStr(importProblem) + "\"}");
                     return;
                 }
+                // composeBasePath defines the sandbox that keeps a docker-compose
+                // service's path confined to a safe directory (see isWithinBase).
+                // It's a server-controlled security boundary, not something an
+                // imported file — from this server's own export or elsewhere —
+                // should be able to change; an importer could otherwise widen it
+                // to any absolute path and defeat that sandboxing entirely. Force
+                // it to whatever is already live here, regardless of what the
+                // imported file claims.
+                String currentBasePath = extractJsonField(jsonConfig, "composeBasePath");
+                if (currentBasePath == null || currentBasePath.isEmpty()) currentBasePath = "/srv/docker-compose";
+                content = updateJsonField(content, "composeBasePath", currentBasePath);
                 synchronized (CONFIG_LOCK) {
                     try {
                         String stamp = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss").format(new java.util.Date());
