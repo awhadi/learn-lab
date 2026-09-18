@@ -252,6 +252,34 @@ main {
     word-break: break-word;
 }
 
+.docker-containers-box {
+    margin-top: 16px;
+}
+.docker-containers-heading {
+    margin: 0 0 8px 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.docker-containers-output {
+    background: #0f0f0f;
+    color: #0f0;
+    font-family: monospace;
+    font-size: 11px;
+    padding: 12px;
+    border-radius: 8px;
+    max-height: 220px;
+    overflow: auto;
+    white-space: pre;
+    margin: 0;
+}
+[data-theme="dark"] .docker-containers-output {
+    background: #1a1a1a;
+}
+
 .stats-card-body {
     display: flex;
     flex-direction: column;

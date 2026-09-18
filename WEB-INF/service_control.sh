@@ -15,8 +15,8 @@ COMPOSE_PATH=$5
 
 # --- Defense-in-depth validation (independent of the JSP caller) ---
 case "$TYPE" in
-    systemctl|docker-compose) ;;
-    *) echo "Error: Unknown type '$TYPE'. Must be 'systemctl' or 'docker-compose'"; exit 1 ;;
+    systemctl|docker-compose|docker-ps) ;;
+    *) echo "Error: Unknown type '$TYPE'. Must be 'systemctl', 'docker-compose' or 'docker-ps'"; exit 1 ;;
 esac
 case "$ACTION" in
     status|start|stop|restart|logs) ;;
@@ -121,8 +121,14 @@ case $TYPE in
         esac
         compose_action "$COMPOSE_PATH" "$ACTION"
         ;;
+    docker-ps)
+        # Global list of every container on the host (running or stopped),
+        # independent of any single service entry — used by the Docker
+        # card's optional "show running containers" display.
+        docker ps -a --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}' 2>&1
+        ;;
     *)
-        echo "Error: Unknown type '$TYPE'. Must be 'systemctl' or 'docker-compose'"
+        echo "Error: Unknown type '$TYPE'. Must be 'systemctl', 'docker-compose' or 'docker-ps'"
         exit 1
         ;;
 esac

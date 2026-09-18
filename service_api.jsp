@@ -656,19 +656,64 @@
             java.nio.file.FileStore store = Files.getFileStore(Paths.get("/"));
             long diskTotal = store.getTotalSpace();
             long diskUsed = diskTotal - store.getUsableSpace();
+
+            long swapTotal = osBean.getTotalSwapSpaceSize();
+            long swapUsed = swapTotal - osBean.getFreeSwapSpaceSize();
+            double loadAverage = osBean.getSystemLoadAverage();
+
+            java.lang.management.MemoryUsage heap =
+                java.lang.management.ManagementFactory.getMemoryMXBean().getHeapMemoryUsage();
+            long heapUsed = heap.getUsed();
+            long heapMax = heap.getMax();
+
+            long uptimeMillis = java.lang.management.ManagementFactory.getRuntimeMXBean().getUptime();
+
             String cpuPercentJson = (cpuLoad >= 0)
                 ? String.format(java.util.Locale.US, "%.2f", cpuLoad * 100)
                 : "null";
+            String loadAverageJson = (loadAverage >= 0)
+                ? String.format(java.util.Locale.US, "%.2f", loadAverage)
+                : "null";
+            String heapMaxJson = (heapMax >= 0) ? String.valueOf(heapMax) : "null";
             out.print("{\"success\":true,\"stats\":{"
                 + "\"cpuPercent\":" + cpuPercentJson + ","
                 + "\"cpuCount\":" + cpuCount + ","
                 + "\"memUsedBytes\":" + memUsed + ","
                 + "\"memTotalBytes\":" + memTotal + ","
                 + "\"diskUsedBytes\":" + diskUsed + ","
-                + "\"diskTotalBytes\":" + diskTotal
+                + "\"diskTotalBytes\":" + diskTotal + ","
+                + "\"swapUsedBytes\":" + swapUsed + ","
+                + "\"swapTotalBytes\":" + swapTotal + ","
+                + "\"loadAverage\":" + loadAverageJson + ","
+                + "\"heapUsedBytes\":" + heapUsed + ","
+                + "\"heapMaxBytes\":" + heapMaxJson + ","
+                + "\"uptimeMillis\":" + uptimeMillis
                 + "}}");
         } catch (Exception e) {
             logProblem("system_stats failed", e);
+            out.print("{\"success\":false,\"error\":\"An unexpected error occurred\"}");
+        }
+        return;
+    }
+
+    if ("docker_containers".equals(action)) {
+        // Global "docker ps -a" listing — not tied to any single service
+        // entry, so this doesn't go through the per-service dispatch below.
+        // Opt-in per service via the "showContainers" flag (see Edit Service).
+        try {
+            if (!anyControlScriptExists()) {
+                out.print("{\"success\":false,\"error\":\"Control script not found on server\"}");
+                return;
+            }
+            java.util.List<String> triedPaths = new java.util.ArrayList<String>();
+            String result = runControlScript(10, 300, triedPaths, "docker-ps", "docker", "status", "50");
+            if (isScriptError(result)) {
+                out.print("{\"success\":false,\"error\":\"" + escapeJsonStr(result) + "\"}");
+            } else {
+                out.print("{\"success\":true,\"containers\":\"" + escapeJsonStr(result) + "\"}");
+            }
+        } catch (Exception e) {
+            logProblem("docker_containers failed", e);
             out.print("{\"success\":false,\"error\":\"An unexpected error occurred\"}");
         }
         return;
@@ -835,6 +880,7 @@
                 String icon = request.getParameter("icon");
                 String visibleParam = request.getParameter("visible");
                 String manageableParam = request.getParameter("manageable");
+                String showContainersParam = request.getParameter("showContainers");
 
                 if (name == null || name.trim().isEmpty()) {
                     out.print("{\"success\":false,\"error\":\"Name is required\"}");
@@ -917,6 +963,7 @@
 
                 svcJson.append(",\"visible\":").append(isVisible);
                 svcJson.append(",\"manageable\":").append(isManageable);
+                svcJson.append(",\"showContainers\":").append("true".equals(showContainersParam));
 
                 if (isManageable) {
                     svcJson.append(",\"actions\":[\"status\",\"start\",\"stop\",\"restart\",\"logs\"]");
@@ -958,6 +1005,7 @@
                 String icon = request.getParameter("icon");
                 String visibleParam = request.getParameter("visible");
                 String manageableParam = request.getParameter("manageable");
+                String showContainersParam = request.getParameter("showContainers");
 
                 if (id == null || id.trim().isEmpty()) {
                     out.print("{\"success\":false,\"error\":\"Service ID is required\"}");
@@ -985,6 +1033,7 @@
                 if (icon != null) serviceBlock = updateJsonField(serviceBlock, "icon", icon);
                 if (visibleParam != null) serviceBlock = serviceBlock.replaceAll("\"visible\":\\s*(true|false)", "\"visible\":" + ("true".equals(visibleParam)));
                 if (manageableParam != null) serviceBlock = serviceBlock.replaceAll("\"manageable\":\\s*(true|false)", "\"manageable\":" + ("true".equals(manageableParam)));
+                if (showContainersParam != null) serviceBlock = setJsonRawField(serviceBlock, "showContainers", String.valueOf("true".equals(showContainersParam)));
 
                 String linksParam = request.getParameter("links");
                 if (linksParam != null) {

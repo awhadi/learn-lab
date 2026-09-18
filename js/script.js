@@ -101,7 +101,7 @@ function checkDisclaimerStatus() {
 
 // ==================== API Functions ====================
 function callServiceAPI(params) {
-    const method = params.action === 'list_services' ? 'GET' : (params.action === 'add_service' || params.action === 'update_service' || params.action === 'delete_service' ? 'POST' : (params.action === 'status' || params.action === 'logs' || params.action === 'system_stats' ? 'GET' : 'POST'));
+    const method = params.action === 'list_services' ? 'GET' : (params.action === 'add_service' || params.action === 'update_service' || params.action === 'delete_service' ? 'POST' : (params.action === 'status' || params.action === 'logs' || params.action === 'system_stats' || params.action === 'docker_containers' ? 'GET' : 'POST'));
     const qs = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
         qs.set(key, value);
@@ -639,7 +639,8 @@ function loadServiceForEdit(id) {
                     document.getElementById('serviceDescription').value = service.description || '';
                     document.getElementById('serviceVisible').checked = service.visible;
                     document.getElementById('serviceManageable').checked = service.manageable;
-                    
+                    document.getElementById('serviceShowContainers').checked = !!service.showContainers;
+
                     if (service.type === 'docker-compose') {
                         document.getElementById('composePath').value = service.composePath || '';
                         document.getElementById('composeOption').value = 'path';
@@ -668,6 +669,7 @@ function updateServiceTypeFields() {
     const isStats = type === 'system-stats';
     document.getElementById('openLinksGroup').style.display = isStats ? 'none' : 'block';
     document.getElementById('descriptionGroup').style.display = isStats ? 'none' : 'block';
+    document.getElementById('showContainersGroup').style.display = type === 'systemctl' ? 'block' : 'none';
     syncManageableField(type);
 }
 
@@ -764,6 +766,7 @@ function saveService() {
     const description = document.getElementById('serviceDescription').value;
     const visible = document.getElementById('serviceVisible').checked;
     const manageable = document.getElementById('serviceManageable').checked;
+    const showContainers = document.getElementById('serviceShowContainers').checked;
     const links = collectLinkRows();
 
     const params = {
@@ -774,6 +777,7 @@ function saveService() {
         description: description,
         visible: visible,
         manageable: manageable,
+        showContainers: showContainers,
         links: JSON.stringify(links)
     };
     
@@ -1112,7 +1116,8 @@ function loadAndRenderServices() {
                 // Sanitize only the config-owned description; the card skeleton below is trusted markup.
                 const bodyHtml = svc.type === 'system-stats'
                     ? statsCardBodyHtml()
-                    : `<div class="card-service-info">${sanitizeHtml(svc.description || '')}</div>`;
+                    : `<div class="card-service-info">${sanitizeHtml(svc.description || '')}</div>`
+                        + (svc.showContainers ? dockerContainersBodyHtml() : '');
                 card.innerHTML = `
                     <div class="card">
                         <div class="card-header">
@@ -1147,6 +1152,8 @@ function loadAndRenderServices() {
                     if (document.visibilityState !== 'hidden') fetchAndRenderSystemStats();
                 }, 5000);
             }
+
+            fetchAndRenderDockerContainers();
         })
         .catch(err => {
             container.innerHTML = `<div class="col-md-4"><div class="card"><div class="card-body"><p>Error loading services: ${escapeHtml(err.message)}</p></div></div></div>`;
@@ -1155,25 +1162,62 @@ function loadAndRenderServices() {
 
 let systemStatsRefreshTimer = null;
 
+function dockerContainersBodyHtml() {
+    return `<div class="docker-containers-box">
+        <h5 class="docker-containers-heading"><i class="fas fa-boxes-stacked"></i> Running Containers (docker ps -a)</h5>
+        <pre class="docker-containers-output" data-docker-containers>Loading…</pre>
+    </div>`;
+}
+
+function fetchAndRenderDockerContainers() {
+    const els = document.querySelectorAll('[data-docker-containers]');
+    if (els.length === 0) return;
+    callServiceAPI({ action: 'docker_containers' })
+        .then(data => {
+            const text = data.success ? (data.containers || '(no containers)') : ('Failed to load containers: ' + (data.error || 'Unknown error'));
+            els.forEach(el => { el.textContent = text; });
+        })
+        .catch(err => {
+            els.forEach(el => { el.textContent = 'Error: ' + err.message; });
+        });
+}
+
 function statsCardBodyHtml() {
-    const row = (field, icon, label) => `
+    const row = (field, icon, label, noBar) => `
         <div class="stats-row">
             <div class="stats-row-header">
                 <span class="stats-label"><i class="${icon}"></i> ${label}</span>
                 <span class="stats-value" data-stats-field="${field}">…</span>
             </div>
-            <div class="stats-bar"><div class="stats-bar-fill" data-stats-fill="${field}" style="width:0%"></div></div>
+            ${noBar ? '' : `<div class="stats-bar"><div class="stats-bar-fill" data-stats-fill="${field}" style="width:0%"></div></div>`}
         </div>`;
     return `<div class="stats-card-body">
         ${row('cpu', 'fas fa-microchip', 'CPU')}
         ${row('mem', 'fas fa-memory', 'Memory')}
         ${row('disk', 'fas fa-hdd', 'Storage')}
+        ${row('heap', 'fas fa-layer-group', 'JVM Heap')}
+        ${row('swap', 'fas fa-exchange-alt', 'Swap')}
+        ${row('load', 'fas fa-tachometer-alt', 'Load Avg (1m)')}
+        ${row('uptime', 'fas fa-clock', 'Tomcat Uptime', true)}
     </div>`;
 }
 
 function formatGiB(bytes) {
     if (typeof bytes !== 'number' || isNaN(bytes)) return '—';
     return (bytes / 1073741824).toFixed(2) + ' GiB';
+}
+
+function formatDuration(ms) {
+    if (typeof ms !== 'number' || isNaN(ms) || ms < 0) return '—';
+    const totalMinutes = Math.floor(ms / 60000);
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+    const parts = [];
+    if (days > 0) parts.push(days + 'd');
+    if (days > 0 || hours > 0) parts.push(hours + 'h');
+    parts.push(minutes + 'm');
+    return parts.join(' ');
 }
 
 function setStatRow(root, field, valueText, percent) {
@@ -1193,10 +1237,22 @@ function fetchAndRenderSystemStats() {
             const cpuPct = (typeof s.cpuPercent === 'number') ? s.cpuPercent : null;
             const memPct = s.memTotalBytes ? (s.memUsedBytes / s.memTotalBytes * 100) : 0;
             const diskPct = s.diskTotalBytes ? (s.diskUsedBytes / s.diskTotalBytes * 100) : 0;
+            const heapPct = s.heapMaxBytes ? (s.heapUsedBytes / s.heapMaxBytes * 100) : 0;
+            const swapPct = s.swapTotalBytes ? (s.swapUsedBytes / s.swapTotalBytes * 100) : 0;
+            const loadAvg = (typeof s.loadAverage === 'number') ? s.loadAverage : null;
+            const loadPct = (loadAvg !== null && s.cpuCount) ? (loadAvg / s.cpuCount * 100) : 0;
             cards.forEach(root => {
                 setStatRow(root, 'cpu', cpuPct !== null ? cpuPct.toFixed(2) + '%' : 'n/a', cpuPct);
                 setStatRow(root, 'mem', `${formatGiB(s.memUsedBytes)} / ${formatGiB(s.memTotalBytes)}`, memPct);
                 setStatRow(root, 'disk', `${formatGiB(s.diskUsedBytes)} / ${formatGiB(s.diskTotalBytes)}`, diskPct);
+                setStatRow(root, 'heap', s.heapMaxBytes
+                    ? `${formatGiB(s.heapUsedBytes)} / ${formatGiB(s.heapMaxBytes)}`
+                    : formatGiB(s.heapUsedBytes), heapPct);
+                setStatRow(root, 'swap', s.swapTotalBytes
+                    ? `${formatGiB(s.swapUsedBytes)} / ${formatGiB(s.swapTotalBytes)}`
+                    : 'No swap configured', swapPct);
+                setStatRow(root, 'load', loadAvg !== null ? loadAvg.toFixed(2) : 'n/a', loadPct);
+                setStatRow(root, 'uptime', formatDuration(s.uptimeMillis), 0);
             });
         })
         .catch(() => {

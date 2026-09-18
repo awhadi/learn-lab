@@ -196,6 +196,10 @@
                     <div class="form-group">
                         <label class="checkbox-label" id="serviceManageableLabel"><input type="checkbox" id="serviceManageable"> Enable service management</label>
                     </div>
+                    <div class="form-group" id="showContainersGroup" style="display:none;">
+                        <label class="checkbox-label"><input type="checkbox" id="serviceShowContainers"> Show running Docker containers (docker ps -a) on the main page</label>
+                        <small class="form-hint">Only takes effect on the systemctl service that controls the Docker daemon itself.</small>
+                    </div>
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary" id="cancelServiceFormBtn">Cancel</button>
                         <button type="submit" class="btn btn-primary" id="saveServiceBtn">Save Service</button>
