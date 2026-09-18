@@ -143,6 +143,7 @@
                             <option value="static" selected>Static (No Management)</option>
                             <option value="docker-compose">Docker Compose</option>
                             <option value="systemctl">Systemctl Service</option>
+                            <option value="system-stats">Server Stats (built-in)</option>
                         </select>
                     </div>
                     <div id="dockerComposeFields">
@@ -179,13 +180,13 @@
                         </div>
                         <div class="icon-picker" id="iconPicker" style="display:none;"></div>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" id="openLinksGroup">
                         <label>Open Links</label>
                         <div class="links-box" id="serviceLinksBox"></div>
                         <button type="button" class="btn btn-secondary btn-sm" id="addLinkBtn"><i class="fas fa-plus"></i> Add another link</button>
                         <small class="form-hint">Full URL (https://...) or a path like /test or phpldapadmin — paths open on the current domain automatically. Leave the label blank to default to "Open &lt;service name&gt;". A service can also have no link at all.</small>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" id="descriptionGroup">
                         <label for="serviceDescription">Description (HTML supported)</label>
                         <textarea id="serviceDescription" rows="6"></textarea>
                     </div>
@@ -216,7 +217,16 @@
                 <div class="card">
                     <div class="card-header"><h3 class="card-title"><i class="fas fa-user-clock"></i> Access Information</h3></div>
                     <div class="card-body">
-                        <div class="access-info"><h5>Your Session Details</h5><p>First Access: <span id="displayFirstAccess">Loading...</span></p><p>Total Visits: <span id="displayAccessCount">0</span></p></div>
+                        <div class="access-info">
+                            <h5>Your Session Details</h5>
+                            <p>IP Address: <span id="displayIp">Loading...</span></p>
+                            <p>Current Device: <span id="displayDevice">Loading...</span></p>
+                            <p>First Access: <span id="displayFirstAccess">Loading...</span></p>
+                            <p>Last Access: <span id="displayLastAccess">Loading...</span></p>
+                            <p>Last Access Device: <span id="displayLastDevice">Loading...</span></p>
+                            <p>Total Visits: <span id="displayAccessCount">0</span></p>
+                            <p>Unique Visitors (all-time): <span id="displayUniqueVisitors">0</span></p>
+                        </div>
                         <p><small><a href="#" data-action="showDisclaimer">View Disclaimer</a></small></p>
                     </div>
                 </div>

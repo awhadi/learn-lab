@@ -10,7 +10,18 @@
       "manageable": false,
       "actions": [],
       "createdAt": "2026-09-03T00:00:00Z",
-      "openUrl": "https://pega.awhadi.online/prweb/PRAuth"
+      "openUrl": "/prweb/PRAuth"
+    },
+    {
+      "id": "system-stats",
+      "name": "Server Stats",
+      "icon": "fas fa-server",
+      "type": "system-stats",
+      "description": "",
+      "visible": true,
+      "manageable": false,
+      "actions": [],
+      "createdAt": "2026-09-18T00:00:00Z"
     },
     {
       "id": "uplus",

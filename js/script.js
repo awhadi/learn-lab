@@ -65,19 +65,30 @@ function acceptDisclaimer() {
 // localStorage only ever counted "this browser" and reset on a clear, so it
 // couldn't recognize the same visitor coming back on a different device.
 function trackAccess() {
-    const firstElem = document.getElementById('displayFirstAccess');
-    const countElem = document.getElementById('displayAccessCount');
+    const els = {
+        ip: document.getElementById('displayIp'),
+        device: document.getElementById('displayDevice'),
+        first: document.getElementById('displayFirstAccess'),
+        last: document.getElementById('displayLastAccess'),
+        lastDevice: document.getElementById('displayLastDevice'),
+        count: document.getElementById('displayAccessCount'),
+        unique: document.getElementById('displayUniqueVisitors')
+    };
     fetch('/service_api.jsp?action=track_access', { method: 'POST', cache: 'no-store' })
         .then(r => r.json())
         .then(data => {
             if (!data.success) throw new Error(data.error || 'unknown error');
-            if (firstElem) firstElem.textContent = new Date(data.firstAccess).toLocaleString();
-            if (countElem) countElem.textContent = data.count;
+            if (els.ip) els.ip.textContent = data.ip;
+            if (els.device) els.device.textContent = data.device;
+            if (els.first) els.first.textContent = new Date(data.firstAccess).toLocaleString();
+            if (els.last) els.last.textContent = new Date(data.lastAccess).toLocaleString();
+            if (els.lastDevice) els.lastDevice.textContent = data.lastDevice;
+            if (els.count) els.count.textContent = data.count;
+            if (els.unique) els.unique.textContent = data.uniqueVisitors;
         })
         .catch(err => {
             console.error('[dashboard] trackAccess failed:', err);
-            if (firstElem) firstElem.textContent = 'Unavailable';
-            if (countElem) countElem.textContent = '—';
+            Object.values(els).forEach(el => { if (el) el.textContent = 'Unavailable'; });
         });
 }
 
@@ -90,7 +101,7 @@ function checkDisclaimerStatus() {
 
 // ==================== API Functions ====================
 function callServiceAPI(params) {
-    const method = params.action === 'list_services' ? 'GET' : (params.action === 'add_service' || params.action === 'update_service' || params.action === 'delete_service' ? 'POST' : (params.action === 'status' || params.action === 'logs' ? 'GET' : 'POST'));
+    const method = params.action === 'list_services' ? 'GET' : (params.action === 'add_service' || params.action === 'update_service' || params.action === 'delete_service' ? 'POST' : (params.action === 'status' || params.action === 'logs' || params.action === 'system_stats' ? 'GET' : 'POST'));
     const qs = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
         qs.set(key, value);
@@ -651,6 +662,11 @@ function updateServiceTypeFields() {
     const type = document.getElementById('serviceType').value;
     document.getElementById('dockerComposeFields').style.display = type === 'docker-compose' ? 'block' : 'none';
     document.getElementById('systemctlFields').style.display = type === 'systemctl' ? 'block' : 'none';
+    // The built-in Server Stats widget is self-contained (live numbers, no
+    // link to open, no description to write) — those fields don't apply.
+    const isStats = type === 'system-stats';
+    document.getElementById('openLinksGroup').style.display = isStats ? 'none' : 'block';
+    document.getElementById('descriptionGroup').style.display = isStats ? 'none' : 'block';
     syncManageableField(type);
 }
 
@@ -947,6 +963,15 @@ function renderModalButtons(service, isRunning) {
     logsBtn.innerHTML = '<i class="fas fa-scroll"></i> Show Logs';
     logsBtn.onclick = () => fetchLogs(service);
     container.appendChild(logsBtn);
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn-edit-service';
+    editBtn.innerHTML = '<i class="fas fa-pencil-alt"></i> Edit';
+    editBtn.onclick = () => {
+        closeServiceModal();
+        openServiceForm(service);
+    };
+    container.appendChild(editBtn);
 }
 
 function performAction(service, action) {
@@ -1082,14 +1107,16 @@ function loadAndRenderServices() {
                     : '';
 
                 // Sanitize only the config-owned description; the card skeleton below is trusted markup.
-                const safeDescription = sanitizeHtml(svc.description || '');
+                const bodyHtml = svc.type === 'system-stats'
+                    ? statsCardBodyHtml()
+                    : `<div class="card-service-info">${sanitizeHtml(svc.description || '')}</div>`;
                 card.innerHTML = `
                     <div class="card">
                         <div class="card-header">
                             <h3 class="card-title"><i class="${escapeHtml(svc.icon || 'fas fa-cube')}"></i> ${escapeHtml(svc.name)}</h3>
                         </div>
                         <div class="card-body">
-                            <div class="card-service-info">${safeDescription}</div>
+                            ${bodyHtml}
                         </div>
                         ${footerHtml}
                     </div>
@@ -1103,17 +1130,91 @@ function loadAndRenderServices() {
                     openServiceModal(this.dataset.service, this.dataset.name);
                 });
             });
+
+            // Stats are fetched separately, after the cards are already on
+            // screen, so a slow/unavailable metrics call never delays the
+            // rest of the page from rendering.
+            if (systemStatsRefreshTimer) {
+                clearInterval(systemStatsRefreshTimer);
+                systemStatsRefreshTimer = null;
+            }
+            if (container.querySelector('.stats-card-body')) {
+                fetchAndRenderSystemStats();
+                systemStatsRefreshTimer = setInterval(() => {
+                    if (document.visibilityState !== 'hidden') fetchAndRenderSystemStats();
+                }, 5000);
+            }
         })
         .catch(err => {
             container.innerHTML = `<div class="col-md-4"><div class="card"><div class="card-body"><p>Error loading services: ${escapeHtml(err.message)}</p></div></div></div>`;
         });
 }
 
+let systemStatsRefreshTimer = null;
+
+function statsCardBodyHtml() {
+    const row = (field, icon, label) => `
+        <div class="stats-row">
+            <div class="stats-row-header">
+                <span class="stats-label"><i class="${icon}"></i> ${label}</span>
+                <span class="stats-value" data-stats-field="${field}">…</span>
+            </div>
+            <div class="stats-bar"><div class="stats-bar-fill" data-stats-fill="${field}" style="width:0%"></div></div>
+        </div>`;
+    return `<div class="stats-card-body">
+        ${row('cpu', 'fas fa-microchip', 'CPU')}
+        ${row('mem', 'fas fa-memory', 'Memory')}
+        ${row('disk', 'fas fa-hdd', 'Storage')}
+    </div>`;
+}
+
+function formatGiB(bytes) {
+    if (typeof bytes !== 'number' || isNaN(bytes)) return '—';
+    return (bytes / 1073741824).toFixed(2) + ' GiB';
+}
+
+function setStatRow(root, field, valueText, percent) {
+    const valueEl = root.querySelector(`[data-stats-field="${field}"]`);
+    const fillEl = root.querySelector(`[data-stats-fill="${field}"]`);
+    if (valueEl) valueEl.textContent = valueText;
+    if (fillEl) fillEl.style.width = Math.max(0, Math.min(100, percent || 0)) + '%';
+}
+
+function fetchAndRenderSystemStats() {
+    const cards = document.querySelectorAll('.stats-card-body');
+    if (cards.length === 0) return;
+    callServiceAPI({ action: 'system_stats' })
+        .then(data => {
+            if (!data.success || !data.stats) throw new Error(data.error || 'Unavailable');
+            const s = data.stats;
+            const cpuPct = (typeof s.cpuPercent === 'number') ? s.cpuPercent : null;
+            const memPct = s.memTotalBytes ? (s.memUsedBytes / s.memTotalBytes * 100) : 0;
+            const diskPct = s.diskTotalBytes ? (s.diskUsedBytes / s.diskTotalBytes * 100) : 0;
+            cards.forEach(root => {
+                setStatRow(root, 'cpu', cpuPct !== null ? cpuPct.toFixed(2) + '%' : 'n/a', cpuPct);
+                setStatRow(root, 'mem', `${formatGiB(s.memUsedBytes)} / ${formatGiB(s.memTotalBytes)}`, memPct);
+                setStatRow(root, 'disk', `${formatGiB(s.diskUsedBytes)} / ${formatGiB(s.diskTotalBytes)}`, diskPct);
+            });
+        })
+        .catch(() => {
+            cards.forEach(root => {
+                root.querySelectorAll('.stats-value').forEach(el => { el.textContent = 'Unavailable'; });
+            });
+        });
+}
+
 // ==================== Initialization ====================
 document.addEventListener('DOMContentLoaded', function() {
-    
+
     // --- Load service cards dynamically ---
     loadAndRenderServices();
+
+    // The stats card's own interval pauses while this tab is in the
+    // background; without this, coming back to the tab shows numbers as
+    // stale as however long it was hidden, which reads as "not live".
+    document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') fetchAndRenderSystemStats();
+    });
 
     // --- Close service modal button ---
     const closeServiceModalBtn = document.getElementById('closeServiceModalBtn');

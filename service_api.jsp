@@ -31,17 +31,52 @@
         return request.getRemoteAddr();
     }
 
-    // Access log is a flat tab-separated file (ip, firstAccess, count,
-    // lastAccess) rather than JSON — the existing JSON handling in this file
-    // is built around the fixed "services" schema, not an arbitrary keyed
-    // map, so a simple line format is the lower-risk fit for this data.
-    // Line format: ip \t firstAccess(ISO instant) \t count \t lastVisitDate(yyyy-MM-dd).
+    // Best-effort "Chrome on macOS"-style label from a User-Agent header.
+    // Simple substring checks rather than a parsing library: good enough for
+    // a personal dashboard's "what device did I last use" display, not meant
+    // to be a precise UA parser.
+    private String parseDeviceLabel(String userAgent) {
+        if (userAgent == null || userAgent.trim().isEmpty()) return "Unknown device";
+        String ua = userAgent;
+        String os;
+        if (ua.contains("iPhone")) os = "iPhone";
+        else if (ua.contains("iPad")) os = "iPad";
+        else if (ua.contains("Android")) os = "Android";
+        else if (ua.contains("Mac OS X") || ua.contains("Macintosh")) os = "macOS";
+        else if (ua.contains("Windows")) os = "Windows";
+        else if (ua.contains("Linux")) os = "Linux";
+        else os = "Unknown OS";
+
+        String browser;
+        if (ua.contains("Edg/")) browser = "Edge";
+        else if (ua.contains("OPR/") || ua.contains("Opera")) browser = "Opera";
+        else if (ua.contains("CriOS/")) browser = "Chrome";
+        else if (ua.contains("FxiOS/")) browser = "Firefox";
+        else if (ua.contains("Chrome/") && !ua.contains("Chromium")) browser = "Chrome";
+        else if (ua.contains("Firefox/")) browser = "Firefox";
+        else if (ua.contains("Safari/") && !ua.contains("Chrome")) browser = "Safari";
+        else browser = "Unknown browser";
+
+        return browser + " on " + os;
+    }
+
+    // Access log is a flat tab-separated file rather than JSON — the existing
+    // JSON handling in this file is built around the fixed "services" schema,
+    // not an arbitrary keyed map, so a simple line format is the lower-risk
+    // fit for this data.
+    // Line format: ip \t firstAccess(ISO instant) \t count \t lastVisitDate(yyyy-MM-dd) \t lastAccessInstant(ISO) \t lastDevice
+    // (the last two fields are optional for lines written before they existed).
     // A "visit" increments count only the first time a given IP is seen on a
-    // given calendar day — refreshing the same day never changes anything
-    // (no write even happens), so a thousand reloads today still read as 1.
-    // Coming back on a later calendar day adds exactly 1, regardless of how
-    // many times that new day is refreshed too.
-    private String[] trackAndGetAccess(String ip, String logPath) throws Exception {
+    // given calendar day — refreshing the same day never changes the count
+    // (though lastAccessInstant/lastDevice still update on every hit), so a
+    // thousand reloads today still count as 1. Coming back on a later
+    // calendar day adds exactly 1, regardless of how many times that new day
+    // is refreshed too.
+    // Returns: {firstAccess, count, previousLastAccess, previousDevice, uniqueVisitors}
+    // — "previous" fields reflect the visit BEFORE this one (i.e. "last seen"
+    // as of walking in the door just now), which is what's actually useful to
+    // show someone: their current hit is always "now" and always "this device".
+    private String[] trackAndGetAccess(String ip, String logPath, String device) throws Exception {
         List<String> lines = new ArrayList<String>();
         if (Files.exists(Paths.get(logPath))) {
             lines = Files.readAllLines(Paths.get(logPath), StandardCharsets.UTF_8);
@@ -49,9 +84,10 @@
         String today = java.time.LocalDate.now().toString();
         String nowIso = java.time.Instant.now().toString();
         String firstAccess = nowIso;
+        String previousLastAccess = nowIso;
+        String previousDevice = device;
         int count = 1;
         boolean found = false;
-        boolean changed = false;
         for (int i = 0; i < lines.size(); i++) {
             String[] parts = lines.get(i).split("\t", -1);
             if (parts.length >= 4 && parts[0].equals(ip)) {
@@ -59,33 +95,31 @@
                 firstAccess = parts[1];
                 try { count = Integer.parseInt(parts[2]); } catch (NumberFormatException nfe) { count = 1; }
                 String lastVisitDate = parts[3];
-                if (!today.equals(lastVisitDate)) {
-                    count = count + 1;
-                    lines.set(i, ip + "\t" + firstAccess + "\t" + count + "\t" + today);
-                    changed = true;
-                }
+                previousLastAccess = (parts.length >= 5 && !parts[4].isEmpty()) ? parts[4] : firstAccess;
+                previousDevice = (parts.length >= 6 && !parts[5].isEmpty()) ? parts[5] : device;
+                if (!today.equals(lastVisitDate)) count = count + 1;
+                lines.set(i, ip + "\t" + firstAccess + "\t" + count + "\t" + today + "\t" + nowIso + "\t" + device);
                 break;
             }
         }
         if (!found) {
-            lines.add(ip + "\t" + nowIso + "\t1\t" + today);
+            lines.add(ip + "\t" + nowIso + "\t1\t" + today + "\t" + nowIso + "\t" + device);
             firstAccess = nowIso;
             count = 1;
-            changed = true;
+            previousLastAccess = nowIso;
+            previousDevice = device;
         }
-        if (changed) {
-            StringBuilder sb = new StringBuilder();
-            for (String l : lines) sb.append(l).append("\n");
-            Path target = Paths.get(logPath);
-            Path tmp = target.resolveSibling(target.getFileName().toString() + ".tmp");
-            Files.write(tmp, sb.toString().getBytes(StandardCharsets.UTF_8));
-            try {
-                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException amnse) {
-                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
-            }
+        StringBuilder sb = new StringBuilder();
+        for (String l : lines) sb.append(l).append("\n");
+        Path target = Paths.get(logPath);
+        Path tmp = target.resolveSibling(target.getFileName().toString() + ".tmp");
+        Files.write(tmp, sb.toString().getBytes(StandardCharsets.UTF_8));
+        try {
+            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException amnse) {
+            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
         }
-        return new String[]{firstAccess, String.valueOf(count)};
+        return new String[]{firstAccess, String.valueOf(count), previousLastAccess, previousDevice, String.valueOf(lines.size())};
     }
 
     // Central error logger: everything written here lands in catalina.out
@@ -327,7 +361,7 @@
         m = typeRe.matcher(flat);
         while (m.find()) {
             String t = m.group(1);
-            if (!t.equals("static") && !t.equals("systemctl") && !t.equals("docker-compose")) {
+            if (!t.equals("static") && !t.equals("systemctl") && !t.equals("docker-compose") && !t.equals("system-stats")) {
                 return "Refused: unknown service type \"" + t + "\"";
             }
         }
@@ -608,6 +642,38 @@
         return;
     }
 
+    if ("system_stats".equals(action)) {
+        // Read-only host metrics for the Server Stats card. Uses only JVM/OS
+        // MXBean + NIO FileStore APIs — no subprocess, no sudo, negligible cost.
+        try {
+            com.sun.management.OperatingSystemMXBean osBean =
+                (com.sun.management.OperatingSystemMXBean) java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+            double cpuLoad = osBean.getCpuLoad();
+            int cpuCount = osBean.getAvailableProcessors();
+            long memTotal = osBean.getTotalMemorySize();
+            long memFree = osBean.getFreeMemorySize();
+            long memUsed = memTotal - memFree;
+            java.nio.file.FileStore store = Files.getFileStore(Paths.get("/"));
+            long diskTotal = store.getTotalSpace();
+            long diskUsed = diskTotal - store.getUsableSpace();
+            String cpuPercentJson = (cpuLoad >= 0)
+                ? String.format(java.util.Locale.US, "%.2f", cpuLoad * 100)
+                : "null";
+            out.print("{\"success\":true,\"stats\":{"
+                + "\"cpuPercent\":" + cpuPercentJson + ","
+                + "\"cpuCount\":" + cpuCount + ","
+                + "\"memUsedBytes\":" + memUsed + ","
+                + "\"memTotalBytes\":" + memTotal + ","
+                + "\"diskUsedBytes\":" + diskUsed + ","
+                + "\"diskTotalBytes\":" + diskTotal
+                + "}}");
+        } catch (Exception e) {
+            logProblem("system_stats failed", e);
+            out.print("{\"success\":false,\"error\":\"An unexpected error occurred\"}");
+        }
+        return;
+    }
+
     if ("track_access".equals(action)) {
         // Server-side, IP-keyed visit tracking — replaces the old localStorage
         // approach, which only ever counted "this browser", reset on a clear,
@@ -615,12 +681,21 @@
         // device. Stored server-side under WEB-INF, never exposed over HTTP.
         try {
             String ip = getClientIp(request);
+            String device = parseDeviceLabel(request.getHeader("User-Agent"));
             String accessLogPath = application.getRealPath("/WEB-INF/access-log.tsv");
             String[] result;
             synchronized (ACCESS_LOG_LOCK) {
-                result = trackAndGetAccess(ip, accessLogPath);
+                result = trackAndGetAccess(ip, accessLogPath, device);
             }
-            out.print("{\"success\":true,\"firstAccess\":\"" + escapeJsonStr(result[0]) + "\",\"count\":" + result[1] + "}");
+            out.print("{\"success\":true"
+                + ",\"ip\":\"" + escapeJsonStr(ip) + "\""
+                + ",\"firstAccess\":\"" + escapeJsonStr(result[0]) + "\""
+                + ",\"count\":" + result[1]
+                + ",\"lastAccess\":\"" + escapeJsonStr(result[2]) + "\""
+                + ",\"lastDevice\":\"" + escapeJsonStr(result[3]) + "\""
+                + ",\"device\":\"" + escapeJsonStr(device) + "\""
+                + ",\"uniqueVisitors\":" + result[4]
+                + "}");
         } catch (Exception e) {
             logProblem("track_access failed", e);
             out.print("{\"success\":false,\"error\":\"An unexpected error occurred\"}");
