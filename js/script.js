@@ -436,6 +436,7 @@ function toggleServiceVisibility(id) {
         .then(data => {
             if (!data.success) alert('Failed to update visibility: ' + (data.error || 'Unknown'));
             loadServicesList();
+            loadAndRenderServices();
         })
         .catch(err => {
             alert('Error updating visibility: ' + err.message);
@@ -801,6 +802,7 @@ function saveService() {
             if (data.success) {
                 closeServiceForm();
                 loadServicesList();
+                loadAndRenderServices();
             } else {
                 alert('Failed to save service: ' + (data.error || 'Unknown error'));
             }
@@ -826,6 +828,7 @@ function deleteService(id) {
             .then(data => {
                 if (data.success) {
                     loadServicesList();
+                    loadAndRenderServices();
                 } else {
                     alert('Failed to delete service: ' + (data.error || 'Unknown error'));
                 }
